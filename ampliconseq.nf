@@ -100,9 +100,9 @@ process check_inputs {
 process picard_metrics {
     tag "${id}"
 
-    memory { 4.GB * task.attempt }
-    time { 2.hour * task.attempt }
-    maxRetries 2
+    memory { params.picardMetricsMemory * task.attempt }
+    time { params.picardMetricsTime * task.attempt }
+    maxRetries params.picardMetricsMaxRetries
 
     input:
         tuple val(id), val(prefix), path(bam), path(amplicon_groups), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
