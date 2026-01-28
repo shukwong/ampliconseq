@@ -189,9 +189,9 @@ process collate_variants {
 process pileup_counts {
     tag "${id}"
 
-    memory { 8.GB * task.attempt }
-    time { 4.hour * task.attempt }
-    maxRetries 2
+    memory { params.pileupCountsMemory * task.attempt }
+    time { params.pileupCountsTime * task.attempt }
+    maxRetries params.pileupCountsMaxRetries
 
     input:
         tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(amplicon_bam), path(amplicon_bai), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
