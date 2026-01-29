@@ -123,6 +123,8 @@ process picard_metrics {
 process subsample_large_bam {
     tag "${id}"
 
+    container false
+
     memory { params.subsampleBamMemory * task.attempt }
     time { params.subsampleBamTime * task.attempt }
     maxRetries params.subsampleBamMaxRetries
