@@ -2,6 +2,9 @@
 
 set -e -o pipefail
 
+# Load samtools module if available (for cluster environments)
+module load samtools 2>/dev/null || true
+
 # Get the actual file size in bytes, following symlinks
 actual_file=$(readlink -f !{bam})
 file_size=$(stat -L -c %s "${actual_file}")
