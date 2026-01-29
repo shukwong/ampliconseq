@@ -191,7 +191,7 @@ assignment_metrics <- amplicon_coverage %>%
   summarize(`Reads assigned` = sum(Reads), `Bases assigned` = sum(Bases)) %>%
   arrange(ID)
 
-if (nrow(assignment_metrics) != nrow(assignment_metrics)) {
+if (nrow(assignment_metrics) != nrow(metrics)) {
   stop("unexpected number of entries in amplicon coverage file")
 }
 
