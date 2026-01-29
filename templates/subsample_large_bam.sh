@@ -6,21 +6,22 @@ set -e -o pipefail
 actual_file=$(readlink -f !{bam})
 file_size=$(stat -L -c %s "${actual_file}")
 
-# Convert max size from GB to bytes
-max_size_bytes=$(echo "!{max_size_gb} * 1024 * 1024 * 1024" | bc)
+# Convert max size from GB to bytes using awk
+max_size_bytes=$(awk "BEGIN {printf \"%.0f\", !{max_size_gb} * 1024 * 1024 * 1024}")
 
 if [ "${file_size}" -gt "${max_size_bytes}" ]; then
     echo "BAM file size (${file_size} bytes) exceeds maximum (!{max_size_gb}GB). Subsampling..."
 
-    # Calculate the sampling fraction to achieve target size
-    fraction=$(echo "scale=6; ${max_size_bytes} / ${file_size}" | bc)
+    # Calculate the sampling fraction to achieve target size using awk
+    fraction=$(awk "BEGIN {printf \"%.6f\", ${max_size_bytes} / ${file_size}}")
 
     # Use a random seed based on the sample ID for reproducibility
     seed=$(echo "!{id}" | cksum | cut -d' ' -f1)
     seed=$((seed % 10000))
 
     # Subsample using samtools view with the calculated fraction
-    samtools view -b -s ${seed}.${fraction#*.} -o !{output_bam} !{bam}
+    # Format: seed.fraction (e.g., 42.123456)
+    samtools view -b -s ${seed}${fraction#0} -o !{output_bam} !{bam}
 
     # Index the subsampled BAM
     samtools index !{output_bam}
