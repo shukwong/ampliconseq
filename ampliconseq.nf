@@ -119,6 +119,27 @@ process picard_metrics {
 }
 
 
+// subsample BAM files that exceed the maximum size threshold
+process subsample_large_bam {
+    tag "${id}"
+
+    memory { params.subsampleBamMemory * task.attempt }
+    time { params.subsampleBamTime * task.attempt }
+    maxRetries params.subsampleBamMaxRetries
+
+    input:
+        tuple val(id), val(prefix), path(bam)
+
+    output:
+        tuple val(id), val(prefix), path(output_bam)
+
+    shell:
+        output_bam = "${prefix}.subsampled.bam"
+        max_size_gb = params.maxBamSizeGb
+        template "subsample_large_bam.sh"
+}
+
+
 // extract reads that correspond to groups of amplicon to create
 // subset BAM files
 process extract_amplicon_regions {
@@ -589,6 +610,10 @@ workflow {
         .splitCsv(header: true, sep: "\t")
         .map { row -> tuple("${row.ID}", "${row.ID}".replaceFirst(/ /, "_"), file(!params.bamDir ? "${row.BAM}" : "${params.bamDir}/${row.BAM}", checkIfExists: true)) }
 
+    // subsample large BAM files that exceed the size threshold
+    subsample_large_bam(bams)
+    subsampled_bams = subsample_large_bam.out
+
     amplicon_bed_files = create_non_overlapping_amplicon_groups.out.amplicon_bed_files
         .flatten()
         .map { tuple((it =~ /.*\.(\d+)\.bed$/)[0][1], it) }
@@ -599,7 +624,7 @@ workflow {
 
     bed_files = amplicon_bed_files.join(target_bed_files)
 
-    extract_amplicon_regions(bed_files.combine(bams))
+    extract_amplicon_regions(bed_files.combine(subsampled_bams))
 
     // collect amplicon coverage data for all samples
     amplicon_coverage = extract_amplicon_regions.out.coverage
@@ -608,7 +633,7 @@ workflow {
     amplicon_bams = extract_amplicon_regions.out.bam.combine(reference_sequence)
 
     // Picard alignment summary metrics
-    picard_metrics(bams.combine(amplicon_groups).combine(reference_sequence))
+    picard_metrics(subsampled_bams.combine(amplicon_groups).combine(reference_sequence))
 
     // collect Picard metrics for all samples
     alignment_metrics = picard_metrics.out.alignment_metrics
