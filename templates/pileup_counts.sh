@@ -1,6 +1,6 @@
 #!/bin/bash
 
-JAVA_OPTS="-Xmx!{java_mem}m" pileup-counts \
+JAVA_OPTS="-Xmx!{java_mem}m -XX:+CrashOnOutOfMemoryError" pileup-counts \
     --id "!{id}" \
     --input !{amplicon_bam} \
     --amplicon-intervals !{target_bed} \
