@@ -105,7 +105,7 @@ process picard_metrics {
     maxRetries params.picardMetricsMaxRetries
 
     input:
-        tuple val(id), val(prefix), path(bam), path(amplicon_groups), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
+        tuple val(id), val(prefix), path(bam), path(bai), path(amplicon_groups), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
 
     output:
         path alignment_metrics, emit: alignment_metrics
@@ -133,10 +133,11 @@ process subsample_large_bam {
         tuple val(id), val(prefix), path(bam)
 
     output:
-        tuple val(id), val(prefix), path(output_bam)
+        tuple val(id), val(prefix), path(output_bam), path(output_bai)
 
     shell:
         output_bam = "${prefix}.subsampled.bam"
+        output_bai = "${prefix}.subsampled.bam.bai"
         max_size_gb = params.maxBamSizeGb
         template "subsample_large_bam.sh"
 }
@@ -146,13 +147,13 @@ process subsample_large_bam {
 // subset BAM files
 process extract_amplicon_regions {
     tag "${id}"
-
-    memory { 2.GB * task.attempt }
+ 
+    memory { params.extractAmpliconRegionsMemory * task.attempt }
     time { 2.hour * task.attempt }
     maxRetries 2
 
     input:
-        tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(bam)
+        tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(bam), path(bai)
 
     output:
         tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(amplicon_bam), path(amplicon_bai), emit: bam
@@ -625,15 +626,15 @@ workflow {
         .map { tuple((it =~ /.*\.(\d+)\.bed$/)[0][1], it) }
 
     bed_files = amplicon_bed_files.join(target_bed_files)
-
+ 
     extract_amplicon_regions(bed_files.combine(subsampled_bams))
-
+ 
     // collect amplicon coverage data for all samples
     amplicon_coverage = extract_amplicon_regions.out.coverage
         .collectFile(name: "amplicon_coverage.txt", keepHeader: true, sort: { it.name })
-
+ 
     amplicon_bams = extract_amplicon_regions.out.bam.combine(reference_sequence)
-
+ 
     // Picard alignment summary metrics
     picard_metrics(subsampled_bams.combine(amplicon_groups).combine(reference_sequence))
 
