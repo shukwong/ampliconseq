@@ -41,8 +41,8 @@ gatk --java-options "-Xmx!{java_mem}m" VariantsToTable \
     --fields QUAL \
     --fields FivePrimeContext \
     --genotype-fields DP \
-    --asGenotypeFieldsToTake AD \
-    --asGenotypeFieldsToTake AF
+    --genotype-fields AD \
+    --genotype-fields AF
 
 tidy_variant_table.R \
     --input merged_annotated_normalized.txt \
