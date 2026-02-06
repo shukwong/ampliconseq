@@ -105,7 +105,7 @@ process picard_metrics {
     maxRetries params.picardMetricsMaxRetries
 
     input:
-        tuple val(id), val(prefix), path(bam), path(amplicon_groups), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
+        tuple val(id), val(prefix), path(bam), path(bai), path(amplicon_groups), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
 
     output:
         path alignment_metrics, emit: alignment_metrics
@@ -119,17 +119,41 @@ process picard_metrics {
 }
 
 
+// subsample BAM files that exceed the maximum size threshold
+process subsample_large_bam {
+    tag "${id}"
+
+    container false
+
+    memory { params.subsampleBamMemory * task.attempt }
+    time { params.subsampleBamTime * task.attempt }
+    maxRetries params.subsampleBamMaxRetries
+
+    input:
+        tuple val(id), val(prefix), path(bam)
+
+    output:
+        tuple val(id), val(prefix), path(output_bam), path(output_bai)
+
+    shell:
+        output_bam = "${prefix}.subsampled.bam"
+        output_bai = "${prefix}.subsampled.bam.bai"
+        max_size_gb = params.maxBamSizeGb
+        template "subsample_large_bam.sh"
+}
+
+
 // extract reads that correspond to groups of amplicon to create
 // subset BAM files
 process extract_amplicon_regions {
     tag "${id}"
-
-    memory { 2.GB * task.attempt }
+ 
+    memory { params.extractAmpliconRegionsMemory * task.attempt }
     time { 2.hour * task.attempt }
     maxRetries 2
 
     input:
-        tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(bam)
+        tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(bam), path(bai)
 
     output:
         tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(amplicon_bam), path(amplicon_bai), emit: bam
@@ -589,6 +613,10 @@ workflow {
         .splitCsv(header: true, sep: "\t")
         .map { row -> tuple("${row.ID}", "${row.ID}".replaceFirst(/ /, "_"), file(!params.bamDir ? "${row.BAM}" : "${params.bamDir}/${row.BAM}", checkIfExists: true)) }
 
+    // subsample large BAM files that exceed the size threshold
+    subsample_large_bam(bams)
+    subsampled_bams = subsample_large_bam.out
+
     amplicon_bed_files = create_non_overlapping_amplicon_groups.out.amplicon_bed_files
         .flatten()
         .map { tuple((it =~ /.*\.(\d+)\.bed$/)[0][1], it) }
@@ -598,17 +626,17 @@ workflow {
         .map { tuple((it =~ /.*\.(\d+)\.bed$/)[0][1], it) }
 
     bed_files = amplicon_bed_files.join(target_bed_files)
-
-    extract_amplicon_regions(bed_files.combine(bams))
-
+ 
+    extract_amplicon_regions(bed_files.combine(subsampled_bams))
+ 
     // collect amplicon coverage data for all samples
     amplicon_coverage = extract_amplicon_regions.out.coverage
         .collectFile(name: "amplicon_coverage.txt", keepHeader: true, sort: { it.name })
-
+ 
     amplicon_bams = extract_amplicon_regions.out.bam.combine(reference_sequence)
-
+ 
     // Picard alignment summary metrics
-    picard_metrics(bams.combine(amplicon_groups).combine(reference_sequence))
+    picard_metrics(subsampled_bams.combine(amplicon_groups).combine(reference_sequence))
 
     // collect Picard metrics for all samples
     alignment_metrics = picard_metrics.out.alignment_metrics
