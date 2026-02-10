@@ -22,6 +22,8 @@ if [ "!{variant_caller}" == "vardict" ]; then
 
 elif [ "!{variant_caller}" == "haplotypecaller" ] || [ "!{variant_caller}" == "mutect2" ]; then
 
+    module load samtools 2>/dev/null || true
+
     # replace SM tag in BAM read groups with sample name from sample sheet
     # to ensure VCF has a single, consistent sample name
     samtools view -H !{amplicon_bam} \
