@@ -24,6 +24,9 @@ option_list <- list(
 
   make_option(c("--id"), dest = "id", help = "Library ID"),
 
+  make_option(c("--sample-name"), dest = "sample_name",
+              help = "Sample name used in VCF (defaults to ID if not specified)"),
+
   make_option(c("--output"), dest = "output_file",
               help = "Output file containing all variants including rows for missing calls")
 )
@@ -32,12 +35,16 @@ option_parser <- OptionParser(usage = "usage: %prog [options]", option_list = op
 opt <- parse_args(option_parser)
 
 id <- opt$id
+sample_name <- opt$sample_name
 input_file <- opt$input_file
 output_file <- opt$output_file
 
 if (is.null(id)) stop("Library ID must be specified")
 if (is.null(input_file)) stop("Input variants file must be specified")
 if (is.null(output_file)) stop("Output file must be specified")
+
+# use sample_name for matching VCF column names; fall back to id if not specified
+if (is.null(sample_name)) sample_name <- id
 
 suppressPackageStartupMessages(library(tidyverse))
 
@@ -47,13 +54,13 @@ variants <- read_tsv(input_file, col_types = cols(.default = "c"))
 # rename columns using name-based matching rather than positional assignment
 # (positional assignment fails if VariantsToTable produces extra columns, e.g.
 # when it splits multi-valued genotype fields like AD into separate columns)
-dp_col <- str_c(id, ".DP")
-ad_col <- str_c(id, ".AD")
-af_col <- str_c(id, ".AF")
+dp_col <- str_c(sample_name, ".DP")
+ad_col <- str_c(sample_name, ".AD")
+af_col <- str_c(sample_name, ".AF")
 
-# check for split AD columns (e.g. {id}.AD.REF and {id}.AD.ALT instead of {id}.AD)
-ad_ref_col <- str_c(id, ".AD.REF")
-ad_alt_col <- str_c(id, ".AD.ALT")
+# check for split AD columns (e.g. {sample}.AD.REF and {sample}.AD.ALT instead of {sample}.AD)
+ad_ref_col <- str_c(sample_name, ".AD.REF")
+ad_alt_col <- str_c(sample_name, ".AD.ALT")
 split_ad <- ad_ref_col %in% colnames(variants) && ad_alt_col %in% colnames(variants)
 
 if (split_ad) {

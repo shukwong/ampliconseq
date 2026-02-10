@@ -47,5 +47,6 @@ gatk --java-options "-Xmx!{java_mem}m" VariantsToTable \
 tidy_variant_table.R \
     --input merged_annotated_normalized.txt \
     --id "!{id}" \
+    --sample-name "!{sample_name}" \
     --output "!{variants}"
 
