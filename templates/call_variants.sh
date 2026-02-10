@@ -30,7 +30,8 @@ elif [ "!{variant_caller}" == "haplotypecaller" ] || [ "!{variant_caller}" == "m
         --RGSM "!{sample_name}" \
         --RGLB "!{id}" \
         --RGPL illumina \
-        --RGPU unit1
+        --RGPU unit1 \
+        --CREATE_INDEX true
 
     if [ "!{variant_caller}" == "haplotypecaller" ]; then
 
