@@ -44,16 +44,67 @@ suppressPackageStartupMessages(library(tidyverse))
 # read variants file
 variants <- read_tsv(input_file, col_types = cols(.default = "c"))
 
-# rename columns
-colnames(variants) <- c("Amplicon", "Chromosome", "Position", "Ref", "Alt", "Multiallelic", "Filters", "Quality", "FivePrimeContext", "Depth", "AD", "Allele fraction")
+# rename columns using name-based matching rather than positional assignment
+# (positional assignment fails if VariantsToTable produces extra columns, e.g.
+# when it splits multi-valued genotype fields like AD into separate columns)
+dp_col <- str_c(id, ".DP")
+ad_col <- str_c(id, ".AD")
+af_col <- str_c(id, ".AF")
+
+# check for split AD columns (e.g. {id}.AD.REF and {id}.AD.ALT instead of {id}.AD)
+ad_ref_col <- str_c(id, ".AD.REF")
+ad_alt_col <- str_c(id, ".AD.ALT")
+split_ad <- ad_ref_col %in% colnames(variants) && ad_alt_col %in% colnames(variants)
+
+if (split_ad) {
+  variants <- variants %>%
+    rename(
+      Amplicon = AMPLICON,
+      Chromosome = CHROM,
+      Position = POS,
+      Ref = REF,
+      Alt = ALT,
+      Multiallelic = MULTIALLELIC,
+      Filters = FILTER,
+      Quality = QUAL,
+      Depth = !!dp_col,
+      `Ref depth` = !!ad_ref_col,
+      `Alt depth` = !!ad_alt_col,
+      `Allele fraction` = !!af_col
+    )
+} else {
+  variants <- variants %>%
+    rename(
+      Amplicon = AMPLICON,
+      Chromosome = CHROM,
+      Position = POS,
+      Ref = REF,
+      Alt = ALT,
+      Multiallelic = MULTIALLELIC,
+      Filters = FILTER,
+      Quality = QUAL,
+      Depth = !!dp_col,
+      AD = !!ad_col,
+      `Allele fraction` = !!af_col
+    )
+}
+
+# drop any extra columns not needed
+expected_cols <- c("Amplicon", "Chromosome", "Position", "Ref", "Alt", "Multiallelic",
+                   "Filters", "Quality", "FivePrimeContext", "Depth",
+                   if (split_ad) c("Ref depth", "Alt depth") else "AD",
+                   "Allele fraction")
+variants <- variants %>% select(all_of(expected_cols))
 
 # convert Multiallelic column to boolean and change NAs to FALSE
 variants <- variants %>%
   mutate(Multiallelic = as.logical(Multiallelic)) %>%
   mutate(Multiallelic = replace_na(Multiallelic, FALSE))
 
-# separate Ref and Alt allelic depths from AD column
-variants <- separate(variants, AD, into = c("Ref depth", "Alt depth"), sep = ",")
+# separate Ref and Alt allelic depths from AD column (if not already split)
+if (!split_ad) {
+  variants <- separate(variants, AD, into = c("Ref depth", "Alt depth"), sep = ",")
+}
 
 # round quality scores
 variants <- mutate(variants, Quality = round(parse_double(Quality)))
