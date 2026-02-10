@@ -20,56 +20,43 @@ if [ "!{variant_caller}" == "vardict" ]; then
         | var2vcf_valid.pl -N "!{id}" -E -P 0 -f !{params.minimumAlleleFraction} \
         > variants.vcf
 
-elif [ "!{variant_caller}" == "haplotypecaller" ] || [ "!{variant_caller}" == "mutect2" ]; then
+elif [ "!{variant_caller}" == "haplotypecaller" ]; then
 
-    module load samtools 2>/dev/null || true
+    gatk --java-options "-Xmx!{java_mem}m" HaplotypeCaller \
+        --input !{amplicon_bam} \
+        --intervals !{target_bed} \
+        --reference !{reference_sequence} \
+        --output haplotypecaller.vcf \
+        --max-reads-per-alignment-start !{params.maximumReadsPerAlignmentStart} \
+        --native-pair-hmm-threads 1 \
+        --force-active
 
-    # replace SM tag in BAM read groups with sample name from sample sheet
-    # to ensure VCF has a single, consistent sample name
-    samtools view -H !{amplicon_bam} \
-        | sed "s/\\tSM:[^\\t]*/\\tSM:!{sample_name}/g" \
-        | samtools reheader - !{amplicon_bam} > reheadered.bam
-    samtools index reheadered.bam
+    gatk --java-options "-Xmx!{java_mem}m" VariantFiltration \
+        --variant haplotypecaller.vcf \
+        --reference !{reference_sequence} \
+        --filter-name "QualByDepth" --filter-expression "QD < 2.0" \
+        --filter-name "StrandOddsRatio" --filter-expression "SOR > 3.0" \
+        --filter-name "RMSMappingQuality" --filter-expression "MQ < 40.0" \
+        --filter-name "MappingQualityRankSumTest" --filter-expression "MQRankSum < -12.5" \
+        --output variants.vcf
 
-    if [ "!{variant_caller}" == "haplotypecaller" ]; then
+elif [ "!{variant_caller}" == "mutect2" ]; then
 
-        gatk --java-options "-Xmx!{java_mem}m" HaplotypeCaller \
-            --input reheadered.bam \
-            --intervals !{target_bed} \
-            --reference !{reference_sequence} \
-            --output haplotypecaller.vcf \
-            --max-reads-per-alignment-start !{params.maximumReadsPerAlignmentStart} \
-            --native-pair-hmm-threads 1 \
-            --force-active
+    gatk --java-options "-Xmx!{java_mem}m" Mutect2 \
+        --input !{amplicon_bam} \
+        --intervals !{target_bed} \
+        --reference !{reference_sequence} \
+        --output mutect.vcf \
+        --max-reads-per-alignment-start !{params.maximumReadsPerAlignmentStart} \
+        --minimum-allele-fraction !{params.minimumAlleleFraction} \
+        --native-pair-hmm-threads 1 \
+        --force-active
 
-        gatk --java-options "-Xmx!{java_mem}m" VariantFiltration \
-            --variant haplotypecaller.vcf \
-            --reference !{reference_sequence} \
-            --filter-name "QualByDepth" --filter-expression "QD < 2.0" \
-            --filter-name "StrandOddsRatio" --filter-expression "SOR > 3.0" \
-            --filter-name "RMSMappingQuality" --filter-expression "MQ < 40.0" \
-            --filter-name "MappingQualityRankSumTest" --filter-expression "MQRankSum < -12.5" \
-            --output variants.vcf
-
-    else
-
-        gatk --java-options "-Xmx!{java_mem}m" Mutect2 \
-            --input reheadered.bam \
-            --intervals !{target_bed} \
-            --reference !{reference_sequence} \
-            --output mutect.vcf \
-            --max-reads-per-alignment-start !{params.maximumReadsPerAlignmentStart} \
-            --minimum-allele-fraction !{params.minimumAlleleFraction} \
-            --native-pair-hmm-threads 1 \
-            --force-active
-
-        gatk --java-options "-Xmx!{java_mem}m" FilterMutectCalls \
-            --variant mutect.vcf \
-            --reference !{reference_sequence} \
-            --output variants.vcf \
-            --min-allele-fraction !{params.minimumAlleleFraction}
-
-    fi
+    gatk --java-options "-Xmx!{java_mem}m" FilterMutectCalls \
+        --variant mutect.vcf \
+        --reference !{reference_sequence} \
+        --output variants.vcf \
+        --min-allele-fraction !{params.minimumAlleleFraction}
 
 else
     echo "Unrecognized variant caller: !{variant_caller}" >&2
@@ -80,4 +67,3 @@ JAVA_OPTS="-Xmx!{java_mem}m" annotate-vcf-with-amplicon-ids \
     --input variants.vcf \
     --target-intervals !{target_bed} \
     --output "!{vcf}"
-

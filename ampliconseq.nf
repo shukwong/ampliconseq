@@ -177,10 +177,10 @@ process call_variants {
     maxRetries 2
 
     input:
-        tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(amplicon_bam), path(amplicon_bai), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary), val(sample_name)
+        tuple val(amplicon_group), path(amplicon_bed), path(target_bed), val(id), val(prefix), path(amplicon_bam), path(amplicon_bai), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
 
     output:
-        tuple val(id), val(prefix), val(sample_name), path(vcf), emit: vcf
+        tuple val(id), val(prefix), path(vcf), emit: vcf
 
     shell:
         java_mem = javaMemMB(task)
@@ -195,7 +195,7 @@ process collate_variants {
     publishDir "${params.outputDir}/vcf", mode: "copy", pattern: "${prefix}.vcf"
 
     input:
-        tuple val(id), val(prefix), val(sample_name), path(amplicon_vcfs), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
+        tuple val(id), val(prefix), path(amplicon_vcfs), path(reference_sequence), path(reference_sequence_index), path(reference_sequence_dictionary)
 
     output:
         tuple val(id), path(vcf), emit: vcf
@@ -613,11 +613,6 @@ workflow {
         .splitCsv(header: true, sep: "\t")
         .map { row -> tuple("${row.ID}", "${row.ID}".replaceFirst(/ /, "_"), file(!params.bamDir ? "${row.BAM}" : "${params.bamDir}/${row.BAM}", checkIfExists: true)) }
 
-    // ID to Sample mapping for setting VCF sample names in GATK callers
-    id_to_sample = samples
-        .splitCsv(header: true, sep: "\t")
-        .map { row -> tuple("${row.ID}", "${row.Sample}") }
-
     // subsample large BAM files that exceed the size threshold
     subsample_large_bam(bams)
     subsampled_bams = subsample_large_bam.out
@@ -662,15 +657,11 @@ workflow {
     collected_pileup_counts = annotate_and_sort_pileup_counts.out
         .collectFile(name: "pileup_counts.txt", keepHeader: true, sort: { it.name }, storeDir: "${params.outputDir}")
 
-    // call variants (add sample name for GATK callers to set VCF sample name)
-    call_variants_input = amplicon_bams
-        .map { tuple(it[3], *it) }
-        .combine(id_to_sample, by: 0)
-        .map { it.tail() }
-    call_variants(call_variants_input)
+    // call variants
+    call_variants(amplicon_bams)
 
     // merge amplicon group VCF files for each library and convert to tabular format
-    collate_variants(call_variants.out.vcf.groupTuple(by: [0, 1, 2]).combine(reference_sequence))
+    collate_variants(call_variants.out.vcf.groupTuple(by: [0, 1]).combine(reference_sequence))
 
     // collect variant calls for all samples
     called_variants = collate_variants.out.variants
