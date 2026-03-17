@@ -354,7 +354,7 @@ vepPickOneAnnotationPerVariant           | true            | Pick one annotation
 outputDir                                |                 | Directory to which output files are written or the launch directory if not specified.
 variantCaller                            | VarDict         | The variant caller (VarDict, HaplotypeCaller or Mutect2).
 minimumAlleleFraction                    | 0.01            | Lower allele fraction limit for detection of variants (for variant callers that provide this option only).
-maximumReadsPerAlignmentStart            | 2500            | Maximum number of reads to retain per alignment start position; reads above this threshold will be downsampled (specific to GATK HaplotypeCaller and Mutect2).
+maximumReadsPerAmplicon                  | 0               | Maximum number of read pairs to retain per amplicon for targeted downsampling; amplicons exceeding this threshold will be randomly downsampled to achieve a more uniform coverage distribution across amplicons (0 = no downsampling).
 minimumMappingQualityForPileup           | 1               | Minimum mapping quality of reads to include in the pileup, i.e. when computing depths and allele fractions.
 minimumBaseQualityForPileup              | 10              | Minimum base quality at a given locus for reads to include in the pileup, i.e. when computing depths and allele fractions.
 minimumDepthForBackgroundNoise           | 100             | Minimum depth of coverage at a given locus for a library to be included when computing background noise.

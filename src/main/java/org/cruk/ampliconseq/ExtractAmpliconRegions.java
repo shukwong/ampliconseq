@@ -11,9 +11,14 @@ package org.cruk.ampliconseq;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -78,6 +83,12 @@ public class ExtractAmpliconRegions extends CommandLineProgram {
     @Option(names = { "-c",
             "--coverage" }, description = "Output coverage file summarizing read counts for each amplicon (optional).")
     private File ampliconCoverageFile;
+
+    @Option(names = "--maximum-reads-per-amplicon", description = "Maximum number of read pairs to retain per amplicon for targeted downsampling; amplicons exceeding this threshold will be randomly downsampled to achieve a more uniform coverage distribution (default: ${DEFAULT-VALUE}, 0 = no downsampling).")
+    private int maximumReadsPerAmplicon = 0;
+
+    @Option(names = "--random-seed", description = "Random seed for reproducible downsampling (default: ${DEFAULT-VALUE}).")
+    private long randomSeed = 42;
 
     @Option(names = "--validation-stringency", description = "Validation stringency applied to the BAM file (default: ${DEFAULT-VALUE}).")
     private ValidationStringency validationStringency = ValidationStringency.LENIENT;
@@ -148,6 +159,29 @@ public class ExtractAmpliconRegions extends CommandLineProgram {
 
             iterator.close();
 
+            // targeted downsampling: if the number of matching read pairs
+            // exceeds the maximum, randomly select a subset to keep for a
+            // more uniform coverage distribution across amplicons
+            Set<String> readsToKeep = null;
+            if (maximumReadsPerAmplicon > 0) {
+                List<String> matchingReadNames = new ArrayList<>();
+                for (Map.Entry<String, Integer> entry : ampliconReadFlags.entrySet()) {
+                    if (isAmpliconReadByFlags(entry.getValue())) {
+                        matchingReadNames.add(entry.getKey());
+                    }
+                }
+
+                if (matchingReadNames.size() > maximumReadsPerAmplicon) {
+                    // use a seed derived from the global seed and amplicon name
+                    // so each amplicon gets a different but reproducible selection
+                    long ampliconSeed = randomSeed ^ amplicon.getName().hashCode();
+                    Collections.shuffle(matchingReadNames, new Random(ampliconSeed));
+                    readsToKeep = new HashSet<>(matchingReadNames.subList(0, maximumReadsPerAmplicon));
+                    logger.info("Downsampling " + amplicon.getName() + " from " + matchingReadNames.size()
+                            + " to " + maximumReadsPerAmplicon + " read pairs");
+                }
+            }
+
             int recordCount = 0;
             int baseCount = 0;
             // int targetBaseCount = 0;
@@ -159,6 +193,13 @@ public class ExtractAmpliconRegions extends CommandLineProgram {
                 SAMRecord record = iterator.next();
 
                 if (isAcceptable(record) && isAmpliconRead(record, ampliconReadFlags)) {
+
+                    // skip reads that were not selected during downsampling
+                    if (readsToKeep != null && !readsToKeep.contains(record.getReadName())) {
+                        progress.record(record);
+                        continue;
+                    }
+
                     // the record is from a read or read pair that has one or
                     // both ends matching the alignment region start/end
                     // depending on whether both ends need to be anchored
@@ -271,6 +312,22 @@ public class ExtractAmpliconRegions extends CommandLineProgram {
         String name = record.getReadName();
         int flags = ampliconReadFlags.getOrDefault(name, 0);
 
+        if (requireBothEndsAnchored) {
+            return flags == 15;
+        } else {
+            return (flags & 3) != 0;
+        }
+    }
+
+    /**
+     * Checks whether the given bit flags indicate an amplicon read. Used during
+     * the downsampling step to count matching reads from the flags map without
+     * needing the SAM record.
+     *
+     * @param flags the bit flags for a read
+     * @return <code>true</code> if the flags indicate an amplicon read
+     */
+    private boolean isAmpliconReadByFlags(int flags) {
         if (requireBothEndsAnchored) {
             return flags == 15;
         } else {

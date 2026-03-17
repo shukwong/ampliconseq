@@ -10,5 +10,6 @@ JAVA_OPTS="-Xmx!{java_mem}m" extract-amplicon-regions \
     --coverage "!{amplicon_coverage}" \
     --maximum-distance !{params.maxDistanceFromAmpliconEnd} \
     --require-both-ends-anchored=!{params.requireBothEndsAnchored} \
-    --unmark-duplicate-reads
+    --unmark-duplicate-reads \
+    --maximum-reads-per-amplicon !{params.maximumReadsPerAmplicon}
 

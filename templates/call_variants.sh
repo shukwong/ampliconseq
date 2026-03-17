@@ -27,7 +27,6 @@ elif [ "!{variant_caller}" == "haplotypecaller" ]; then
         --intervals !{target_bed} \
         --reference !{reference_sequence} \
         --output haplotypecaller.vcf \
-        --max-reads-per-alignment-start !{params.maximumReadsPerAlignmentStart} \
         --native-pair-hmm-threads 1 \
         --force-active
 
@@ -47,7 +46,6 @@ elif [ "!{variant_caller}" == "mutect2" ]; then
         --intervals !{target_bed} \
         --reference !{reference_sequence} \
         --output mutect.vcf \
-        --max-reads-per-alignment-start !{params.maximumReadsPerAlignmentStart} \
         --minimum-allele-fraction !{params.minimumAlleleFraction} \
         --native-pair-hmm-threads 1 \
         --force-active
