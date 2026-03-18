@@ -552,6 +552,94 @@ process summarize_variants {
 }
 
 
+// merge per-library VCFs into a single multi-sample VCF
+process merge_sample_vcfs {
+
+    publishDir "${params.outputDir}/pon", mode: "copy", pattern: "${merged_vcf}*"
+
+    input:
+        path vcfs
+        path reference_sequence
+        path reference_sequence_index
+        path reference_sequence_dictionary
+
+    output:
+        path merged_vcf, emit: vcf
+        path merged_vcf_tbi, emit: vcf_tbi
+
+    shell:
+        merged_vcf = "all_samples_merged.vcf.gz"
+        merged_vcf_tbi = "${merged_vcf}.tbi"
+        template "merge_sample_vcfs.sh"
+}
+
+
+// create a simplified VCF suitable for GetBaseCountsMultiSample pileup
+process create_fake_vcf {
+
+    input:
+        path merged_vcf
+
+    output:
+        path fake_vcf, emit: vcf
+        path fake_vcf_tbi, emit: vcf_tbi
+
+    shell:
+        fake_vcf = "all_variants_fake.vcf.gz"
+        fake_vcf_tbi = "${fake_vcf}.tbi"
+        template "create_fake_vcf.sh"
+}
+
+
+// run GetBaseCountsMultiSample on a control BAM using the fake VCF
+process control_bam_pileup {
+    tag "${bam.simpleName}"
+
+    container params.getBaseCountsContainer
+
+    memory { 4.GB * task.attempt }
+    time { 4.hour * task.attempt }
+    maxRetries 2
+    cpus 4
+
+    input:
+        tuple path(bam), path(bai), path(fake_vcf), path(fake_vcf_tbi), path(reference_sequence), path(reference_sequence_index)
+
+    output:
+        path pileup_vcf, emit: vcf
+        path pileup_vcf_tbi, emit: vcf_tbi
+
+    shell:
+        pileup_vcf = "${bam.simpleName}.pon.pileup.vcf.gz"
+        pileup_vcf_tbi = "${pileup_vcf}.tbi"
+        template "control_bam_pileup.sh"
+}
+
+
+// merge pileup VCFs from all control BAMs with PON_RefDepth/PON_AltDepth aggregation
+process merge_control_pileups {
+
+    publishDir "${params.outputDir}/pon", mode: "copy"
+
+    input:
+        path pileup_vcfs
+        path pileup_vcf_tbis
+
+    output:
+        path merged_pileup_vcf, emit: vcf
+        path merged_pileup_vcf_tbi, emit: vcf_tbi
+        path pon_total_counts_vcf, emit: pon_total_counts
+        path pon_total_counts_vcf_tbi, emit: pon_total_counts_tbi
+
+    shell:
+        merged_pileup_vcf = "pon_merged_pileup.vcf.gz"
+        merged_pileup_vcf_tbi = "${merged_pileup_vcf}.tbi"
+        pon_total_counts_vcf = "pon_total_counts.vcf.gz"
+        pon_total_counts_vcf_tbi = "${pon_total_counts_vcf}.tbi"
+        template "merge_control_pileups.sh"
+}
+
+
 // -----------------------------------------------------------------------------
 // workflow
 // -----------------------------------------------------------------------------
@@ -638,6 +726,50 @@ workflow {
     // collect variant calls for all samples
     called_variants = collate_variants.out.variants
         .collectFile(name: "variants.txt", keepHeader: true)
+
+    // Panel of Normals (PoN) control BAM pileup
+    if (params.controlBams) {
+
+        // collect all per-library VCFs and merge into a single multi-sample VCF
+        all_vcfs = collate_variants.out.vcf.map { id, vcf -> vcf }.collect()
+        merge_sample_vcfs(
+            all_vcfs,
+            reference_sequence_fasta,
+            reference_sequence_index,
+            reference_sequence_dictionary
+        )
+
+        // create simplified fake VCF for GetBaseCountsMultiSample
+        create_fake_vcf(merge_sample_vcfs.out.vcf)
+
+        // read control BAM paths and create channel of BAM + BAI pairs
+        control_bams = channel
+            .fromPath(params.controlBams, checkIfExists: true)
+            .splitText()
+            .map { it.trim() }
+            .filter { it && !it.startsWith('#') }
+            .map { bam_path ->
+                def bam = file(bam_path, checkIfExists: true)
+                def bai = file("${bam_path}.bai").exists() ? file("${bam_path}.bai") : file(bam_path.replaceFirst(/\.bam$/, ".bai"), checkIfExists: true)
+                tuple(bam, bai)
+            }
+
+        // run GetBaseCountsMultiSample on each control BAM
+        control_bam_pileup(
+            control_bams.combine(
+                create_fake_vcf.out.vcf
+                    .combine(create_fake_vcf.out.vcf_tbi)
+                    .combine(reference_sequence_fasta)
+                    .combine(reference_sequence_index)
+            )
+        )
+
+        // merge all pileup VCFs with PON_RefDepth/PON_AltDepth aggregation
+        merge_control_pileups(
+            control_bam_pileup.out.vcf.collect(),
+            control_bam_pileup.out.vcf_tbi.collect()
+        )
+    }
 
     // collate alignment and target coverage metrics
     collate_alignment_coverage_metrics(
@@ -733,6 +865,7 @@ def printParameterSummary() {
         Output directory           : ${params.outputDir}
         Variant caller             : ${params.variantCaller}
         Minimum allele fraction    : ${params.minimumAlleleFraction}
+        Control BAMs (PoN)         : ${params.controlBams ?: 'not specified'}
     """.stripIndent()
     log.info ""
 }
@@ -762,6 +895,10 @@ def helpMessage() {
             --outputDir                Directory to which output files are written
             --variantCaller            The variant caller (VarDict, HaplotypeCaller or Mutect2)
             --minimumAlleleFraction    Lower allele fraction limit for detection of variants (for variant callers that provide this option only)
+            --controlBams              Text file listing control BAM file paths (one per line) for Panel of Normals pileup
+            --getBaseCountsContainer   Docker/Singularity container for GetBaseCountsMultiSample (default: duct/getbasecount:latest)
+            --ponPileupMappingQuality  Minimum mapping quality for PoN pileup (default: 5)
+            --ponPileupBaseQuality     Minimum base quality for PoN pileup (default: 5)
 
         Alternatively, override settings using a configuration file such as the
         following:
