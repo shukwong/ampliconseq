@@ -70,6 +70,17 @@ if (is.null(amplicon_coverage_metrics_file)) stop("Output amplicon coverage metr
 suppressPackageStartupMessages(library(tidyverse))
 
 
+# Gini coefficient for measuring coverage uniformity
+# 0 = perfectly even, 1 = maximally uneven
+gini_coefficient <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) < 2 || sum(x) == 0) return(NA_real_)
+  x <- sort(x)
+  n <- length(x)
+  sum((2 * seq_along(x) - n - 1) * x) / (n * sum(x))
+}
+
+
 # sample sheet
 samples <- read_tsv(samples_file, col_types = cols(ID = "f", .default = "c"))
 samples <- select(samples, ID, Sample)
@@ -216,6 +227,22 @@ assignment_metrics <- assignment_metrics %>%
 
 # merge metrics into single data frame
 metrics <- left_join(metrics, assignment_metrics, by = "ID")
+
+
+# coverage uniformity metrics per library
+# computed from read pair counts (pre-downsampling) and mean coverage (post-downsampling)
+uniformity_metrics <- amplicon_coverage %>%
+  group_by(ID) %>%
+  summarize(
+    `Gini coefficient (read pairs)` = round(gini_coefficient(`Read pairs`), digits = 4),
+    `CV (read pairs)` = round(sd(`Read pairs`, na.rm = TRUE) / mean(`Read pairs`, na.rm = TRUE), digits = 4),
+    `Gini coefficient (mean coverage)` = round(gini_coefficient(`Mean coverage`), digits = 4),
+    `CV (mean coverage)` = round(sd(`Mean coverage`, na.rm = TRUE) / mean(`Mean coverage`, na.rm = TRUE), digits = 4)
+  ) %>%
+  arrange(ID)
+
+# merge metrics into single data frame
+metrics <- left_join(metrics, uniformity_metrics, by = "ID")
 
 
 # read pileup counts in chunks and collect numbers of bases on target and the

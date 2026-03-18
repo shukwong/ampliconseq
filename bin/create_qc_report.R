@@ -119,7 +119,9 @@ alignment_metrics_table <- alignment_metrics %>%
     `% bases assigned`,
     `% bases on target`,
     `% usable bases on target` = `% bases on target (usable)`,
-    `Mean target coverage`
+    `Mean target coverage`,
+    `Gini (read pairs)` = `Gini coefficient (read pairs)`,
+    `Gini (coverage)` = `Gini coefficient (mean coverage)`
   ) %>%
   as.data.frame() %>%
   newTable("Alignment Metrics", significantDigits = 3)
@@ -166,6 +168,14 @@ The mean coverage for each target amplicon is computed only for reads that have
 been assigned to the amplicon based on one or both of the read ends aligning to
 expected genomic locations for that amplicon. Overlapping segments of reads from
 a read pair are not double counted.
+"))
+
+amplicon_coverage_section <- addTo(amplicon_coverage_section, newParagraph("
+Coverage uniformity is assessed using the Gini coefficient (0 = perfectly
+uniform, 1 = maximally uneven). The alignment metrics table reports two Gini
+values per library: 'Gini (read pairs)' measures evenness of read pair counts
+across amplicons before any downsampling, while 'Gini (coverage)' measures
+evenness of mean coverage after downsampling has been applied.
 "))
 
 amplicon_coverage_figure <- newFigure(
