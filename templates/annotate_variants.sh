@@ -22,10 +22,11 @@ gatk --java-options "-Xmx!{java_mem}m" VariantsToTable \
     --fields ALT \
     --fields FivePrimeContext \
     --fields ThreePrimeContext \
-    --fields IndelLength
+    --fields IndelLength \
+    --fields HomopolymerLength
 
-echo -e "Chromosome\tPosition\tRef\tAlt\t5' context\tAlleles\t3' context\tIndel length" > !{other_annotations}
-awk 'BEGIN { FS = "\t"; OFS = "\t" } FNR > 1 { print $1, $2, $3, $4, $5, $3"/"$4, $6, $7 }' distinct_variants.annotated.txt >> !{other_annotations}
+echo -e "Chromosome\tPosition\tRef\tAlt\t5' context\tAlleles\t3' context\tIndel length\tHomopolymer length" > !{other_annotations}
+awk 'BEGIN { FS = "\t"; OFS = "\t" } FNR > 1 { print $1, $2, $3, $4, $5, $3"/"$4, $6, $7, $8 }' distinct_variants.annotated.txt >> !{other_annotations}
 
 add_offset_from_primer_end.R \
     --variants !{variants} \
