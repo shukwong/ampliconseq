@@ -44,6 +44,7 @@ public class AddAssortedAnnotationsToVcf extends CommandLineProgram {
     private static final String FIVE_PRIME_SEQUENCE_CONTEXT = "FivePrimeContext";
     private static final String THREE_PRIME_SEQUENCE_CONTEXT = "ThreePrimeContext";
     private static final String INDEL_LENGTH = "IndelLength";
+    private static final String HOMOPOLYMER_LENGTH = "HomopolymerLength";
 
     @Option(names = { "-i", "--input" }, required = true, description = "Input VCF file (required).")
     private File inputVcfFile;
@@ -96,6 +97,7 @@ public class AddAssortedAnnotationsToVcf extends CommandLineProgram {
             addMultiallelicFlag(variant);
             addSequenceContext(variant, referenceSequence);
             addIndelLength(variant);
+            addHomopolymerLength(variant, referenceSequence);
             writer.add(variant);
         }
 
@@ -120,6 +122,8 @@ public class AddAssortedAnnotationsToVcf extends CommandLineProgram {
                 "The 3' prime sequence context."));
         header.addMetaDataLine(
                 new VCFInfoHeaderLine(INDEL_LENGTH, 1, VCFHeaderLineType.Integer, "The length of the indel."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(HOMOPOLYMER_LENGTH, 1, VCFHeaderLineType.Integer,
+                "Length of the longest homopolymer run overlapping or immediately adjacent to the variant position."));
     }
 
     /**
@@ -157,5 +161,49 @@ public class AddAssortedAnnotationsToVcf extends CommandLineProgram {
             int length = variant.getAlternateAllele(0).length() - variant.getReference().length();
             variant.getCommonInfo().putAttribute(INDEL_LENGTH, length);
         }
+    }
+
+    /**
+     * Adds an INFO entry for the length of the longest homopolymer run
+     * overlapping or immediately adjacent to the variant position. This is
+     * useful for flagging indels that may be sequencing artifacts in
+     * homopolymer regions.
+     *
+     * The method examines the reference sequence surrounding the variant,
+     * extending outward from the variant position in both directions to find
+     * the longest run of identical bases.
+     *
+     * @param variant           the variant
+     * @param referenceSequence the reference sequence
+     */
+    private void addHomopolymerLength(VariantContext variant, ReferenceSequenceFile referenceSequence) {
+        // use a window around the variant to search for homopolymer runs
+        int windowSize = 20;
+        int start = Math.max(1, variant.getStart() - windowSize);
+        int end = variant.getEnd() + windowSize;
+
+        // clamp to contig length
+        int contigLength = referenceSequence.getSequenceDictionary()
+                .getSequence(variant.getContig()).getSequenceLength();
+        end = Math.min(end, contigLength);
+
+        String bases = referenceSequence.getSubsequenceAt(variant.getContig(), start, end)
+                .getBaseString().toUpperCase();
+
+        // find the longest homopolymer run in the window
+        int maxRun = 1;
+        int currentRun = 1;
+        for (int i = 1; i < bases.length(); i++) {
+            if (bases.charAt(i) == bases.charAt(i - 1) && bases.charAt(i) != 'N') {
+                currentRun++;
+                if (currentRun > maxRun) {
+                    maxRun = currentRun;
+                }
+            } else {
+                currentRun = 1;
+            }
+        }
+
+        variant.getCommonInfo().putAttribute(HOMOPOLYMER_LENGTH, maxRun);
     }
 }
