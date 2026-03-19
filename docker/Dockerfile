@@ -35,11 +35,11 @@ RUN git clone --branch ${HTSJDK_TOOLS_VERSION} --depth 1 https://github.com/cruk
     mvn install
 
 # ensures that a new build is run if commits have been made since the last build
-ADD "https://api.github.com/repos/crukci-bioinformatics/ampliconseq/commits?per_page=1" /opt/ampliconseq/.latest_commit
+ADD "https://api.github.com/repos/shukwong/ampliconseq/commits?per_page=1" /opt/ampliconseq/.latest_commit
 
 ARG AMPLICONSEQ_VERSION=master
 
-RUN git clone --branch ${AMPLICONSEQ_VERSION} --depth 1 https://github.com/crukci-bioinformatics/ampliconseq /opt/ampliconseq/build && \
+RUN git clone --branch ${AMPLICONSEQ_VERSION} --depth 1 https://github.com/shukwong/ampliconseq /opt/ampliconseq/build && \
     cd /opt/ampliconseq/build && \
     mvn package && \
     cd .. && \
