@@ -25,6 +25,9 @@ RUN /opt/miniforge3/bin/mamba env create -f conda.yml && \
 
 ENV PATH=/opt/miniforge3/envs/ampliconseq/bin:$PATH
 
+# Save the Maven image's JAVA_HOME before conda's JDK takes precedence in PATH
+ENV MAVEN_JAVA_HOME=${JAVA_HOME}
+
 # ensures that a new build is run if commits have been made since the last build
 ADD "https://api.github.com/repos/crukci-bioinformatics/htsjdk-tools/commits?per_page=1" /opt/htsjdk-tools/.latest_commit
 
@@ -32,7 +35,7 @@ ARG HTSJDK_TOOLS_VERSION=1.1
 
 RUN git clone --branch ${HTSJDK_TOOLS_VERSION} --depth 1 https://github.com/crukci-bioinformatics/htsjdk-tools /opt/htsjdk-tools/build && \
     cd /opt/htsjdk-tools/build && \
-    mvn install
+    JAVA_HOME=${MAVEN_JAVA_HOME} mvn install
 
 # ensures that a new build is run if commits have been made since the last build
 ADD "https://api.github.com/repos/shukwong/ampliconseq/commits?per_page=1" /opt/ampliconseq/.latest_commit
@@ -41,7 +44,7 @@ ARG AMPLICONSEQ_VERSION=master
 
 RUN git clone --branch ${AMPLICONSEQ_VERSION} --depth 1 https://github.com/shukwong/ampliconseq /opt/ampliconseq/build && \
     cd /opt/ampliconseq/build && \
-    mvn package && \
+    JAVA_HOME=${MAVEN_JAVA_HOME} mvn package && \
     cd .. && \
     tar zxf build/target/ampliconseq-*-tools.tar.gz && \
     ln -s ampliconseq-* current
