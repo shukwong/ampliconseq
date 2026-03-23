@@ -177,7 +177,7 @@ metrics <- metrics %>%
 
 
 # amplicon coverage
-amplicon_coverage <- read_tsv(amplicon_coverage_file, col_types = cols(Reads = "i", Bases = "i", .default = "c"))
+amplicon_coverage <- read_tsv(amplicon_coverage_file, col_types = cols(Reads = "i", Bases = "i", `Read pairs` = "i", `Mean coverage` = "d", .default = "c"))
 
 # amplicon coordinates files
 amplicons <- read_tsv(amplicons_file, col_types = cols(.default = "c"))
