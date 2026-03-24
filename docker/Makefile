@@ -1,12 +1,12 @@
 
 version ?= latest
+registry = ghcr.io/shukwong
 
 build:
-	docker build --tag crukcibioinformatics/ampliconseq:${version} .
+	docker build --tag ${registry}/ampliconseq:${version} .
 
 release: build
-	docker push crukcibioinformatics/ampliconseq:${version}
+	docker push ${registry}/ampliconseq:${version}
 
 singularity: build
-	singularity build ampliconseq-${version}.sif docker-daemon://crukcibioinformatics/ampliconseq:${version}
-
+	singularity build ampliconseq-${version}.sif docker-daemon://${registry}/ampliconseq:${version}
