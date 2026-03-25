@@ -603,7 +603,7 @@ process control_bam_pileup {
     cpus 4
 
     input:
-        tuple path(bam), path(bai), path(fake_vcf), path(fake_vcf_tbi), path(reference_sequence), path(reference_sequence_index)
+        tuple val(sample_name), path(bam), path(bai), path(fake_vcf), path(fake_vcf_tbi), path(reference_sequence), path(reference_sequence_index)
 
     output:
         path pileup_vcf, emit: vcf
@@ -742,16 +742,26 @@ workflow {
         // create simplified fake VCF for GetBaseCountsMultiSample
         create_fake_vcf(merge_sample_vcfs.out.vcf)
 
-        // read control BAM paths and create channel of BAM + BAI pairs
+        // read control BAMs file: supports one-column (bam_path) or two-column (sample\tbam_path) format
         control_bams = channel
             .fromPath(params.controlBams, checkIfExists: true)
             .splitText()
             .map { it.trim() }
             .filter { it && !it.startsWith('#') }
-            .map { bam_path ->
+            .map { line ->
+                def fields = line.split(/\t/)
+                def sample_name
+                def bam_path
+                if (fields.size() >= 2) {
+                    sample_name = fields[0].trim()
+                    bam_path = fields[1].trim()
+                } else {
+                    bam_path = fields[0].trim()
+                    sample_name = file(bam_path).simpleName
+                }
                 def bam = file(bam_path, checkIfExists: true)
                 def bai = file("${bam_path}.bai").exists() ? file("${bam_path}.bai") : file(bam_path.replaceFirst(/\.bam$/, ".bai"), checkIfExists: true)
-                tuple(bam, bai)
+                tuple(sample_name, bam, bai)
             }
 
         // run GetBaseCountsMultiSample on each control BAM
@@ -895,7 +905,7 @@ def helpMessage() {
             --outputDir                Directory to which output files are written
             --variantCaller            The variant caller (VarDict, HaplotypeCaller or Mutect2)
             --minimumAlleleFraction    Lower allele fraction limit for detection of variants (for variant callers that provide this option only)
-            --controlBams              Text file listing control BAM file paths (one per line) for Panel of Normals pileup
+            --controlBams              Text file listing control BAMs for Panel of Normals pileup; supports one column (bam_path) or two tab-separated columns (sample_name\\tbam_path)
             --getBaseCountsContainer   Docker/Singularity container for GetBaseCountsMultiSample (default: duct/getbasecount:latest)
             --ponPileupMappingQuality  Minimum mapping quality for PoN pileup (default: 5)
             --ponPileupBaseQuality     Minimum base quality for PoN pileup (default: 5)

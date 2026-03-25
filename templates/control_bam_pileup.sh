@@ -2,13 +2,8 @@
 
 set -e -o pipefail
 
-# extract sample name from BAM header
-sample_name=$(samtools view -H !{bam} | grep '^@RG' | \
-    sed "s/.*SM:\([^\t]*\).*/\1/g" | uniq)
-
-if [ -z "${sample_name}" ]; then
-    sample_name="!{bam.simpleName}"
-fi
+# use sample name provided by the pipeline
+sample_name="!{sample_name}"
 
 # check if the fake VCF has any variants
 variant_count=$(zgrep -v '^#' !{fake_vcf} | wc -l || true)
