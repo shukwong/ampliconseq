@@ -597,7 +597,7 @@ process control_bam_pileup {
 
     container params.getBaseCountsContainer
 
-    memory { 4.GB * task.attempt }
+    memory { 8.GB * task.attempt }
     time { 4.hour * task.attempt }
     maxRetries 2
     cpus 4
