@@ -742,23 +742,13 @@ workflow {
         // create simplified fake VCF for GetBaseCountsMultiSample
         create_fake_vcf(merge_sample_vcfs.out.vcf)
 
-        // read control BAMs file: supports one-column (bam_path) or two-column (sample\tbam_path) format
+        // read control BAMs file: tab-separated with header (Sample, BAM columns required)
         control_bams = channel
             .fromPath(params.controlBams, checkIfExists: true)
-            .splitText()
-            .map { it.trim() }
-            .filter { it && !it.startsWith('#') }
-            .map { line ->
-                def fields = line.split(/\t/)
-                def sample_name
-                def bam_path
-                if (fields.size() >= 2) {
-                    sample_name = fields[0].trim()
-                    bam_path = fields[1].trim()
-                } else {
-                    bam_path = fields[0].trim()
-                    sample_name = file(bam_path).simpleName
-                }
+            .splitCsv(header: true, sep: "\t")
+            .map { row ->
+                def sample_name = row.Sample
+                def bam_path = row.BAM
                 def bam = file(bam_path, checkIfExists: true)
                 def bai = file("${bam_path}.bai").exists() ? file("${bam_path}.bai") : file(bam_path.replaceFirst(/\.bam$/, ".bai"), checkIfExists: true)
                 tuple(sample_name, bam, bai)
@@ -905,7 +895,7 @@ def helpMessage() {
             --outputDir                Directory to which output files are written
             --variantCaller            The variant caller (VarDict, HaplotypeCaller or Mutect2)
             --minimumAlleleFraction    Lower allele fraction limit for detection of variants (for variant callers that provide this option only)
-            --controlBams              Text file listing control BAMs for Panel of Normals pileup; supports one column (bam_path) or two tab-separated columns (sample_name\\tbam_path)
+            --controlBams              TSV file listing control BAMs for Panel of Normals pileup (Sample and BAM columns required)
             --getBaseCountsContainer   Docker/Singularity container for GetBaseCountsMultiSample (default: duct/getbasecount:latest)
             --ponPileupMappingQuality  Minimum mapping quality for PoN pileup (default: 5)
             --ponPileupBaseQuality     Minimum base quality for PoN pileup (default: 5)
