@@ -597,10 +597,10 @@ process control_bam_pileup {
 
     container params.getBaseCountsContainer
 
-    memory { 8.GB * task.attempt }
+    memory { 16.GB * task.attempt }
     time { 4.hour * task.attempt }
     maxRetries 2
-    cpus 4
+    cpus 2
 
     input:
         tuple val(sample_name), path(bam), path(bai), path(fake_vcf), path(fake_vcf_tbi), path(reference_sequence), path(reference_sequence_index)
