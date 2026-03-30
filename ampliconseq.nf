@@ -124,7 +124,8 @@ process picard_metrics {
 process extract_amplicon_regions {
     tag "${id}"
 
-    memory { 4.GB * task.attempt }
+    errorStrategy { task.exitStatus in [1,143,137,104,134,139] ? 'retry' : 'finish' }
+    memory { 8.GB * task.attempt }
     time { 2.hour * task.attempt }
     maxRetries 2
 
@@ -556,7 +557,8 @@ process summarize_variants {
 process pon_extract_amplicon_regions {
     tag "${id}"
 
-    memory { 4.GB * task.attempt }
+    errorStrategy { task.exitStatus in [1,143,137,104,134,139] ? 'retry' : 'finish' }
+    memory { 8.GB * task.attempt }
     time { 2.hour * task.attempt }
     maxRetries 2
 
