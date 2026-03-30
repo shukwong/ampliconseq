@@ -556,7 +556,7 @@ process summarize_variants {
 process pon_extract_amplicon_regions {
     tag "${id}"
 
-    memory { 2.GB * task.attempt }
+    memory { 4.GB * task.attempt }
     time { 2.hour * task.attempt }
     maxRetries 2
 
