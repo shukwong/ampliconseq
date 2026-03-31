@@ -618,6 +618,92 @@ process add_pon_pileup {
         """
 }
 
+// merge sample VCFs and create a multi-sample, left-aligned sites VCF
+process merge_sample_vcfs {
+
+    input:
+        val sample_vcfs
+        path reference_sequence_fasta
+
+    output:
+        path merged_sites_vcf
+
+    script:
+        merged_sites_vcf = "merged_samples.vcf.gz"
+        """
+        set -euo pipefail
+
+        ref=${reference_sequence_fasta}
+
+        tmp_dir=$(mktemp -d)
+        for vcf in ${sample_vcfs}; do
+            base=$(basename ${vcf%.*})
+            norm_vcf=${tmp_dir}/${base}.norm.vcf.gz
+            bcftools norm -f ${ref} -Oz -o ${norm_vcf} ${vcf}
+            bcftools index -f ${norm_vcf}
+        done
+
+        bcftools merge ${tmp_dir}/*.norm.vcf.gz -Oz -o ${merged_sites_vcf}
+        bcftools index -f ${merged_sites_vcf}
+        bcftools view -G -Oz -o ${merged_sites_vcf}.sites.vcf.gz ${merged_sites_vcf}
+        mv ${merged_sites_vcf}.sites.vcf.gz ${merged_sites_vcf}
+        bcftools index -f ${merged_sites_vcf}
+        """
+}
+
+// variant-targeted pileup for control BAMs using merged sample sites VCF
+process pon_variant_pileup {
+
+    input:
+        tuple val(control_id), path(control_bam), path(merged_sites_vcf), path(reference_sequence_fasta)
+
+    output:
+        tuple val(control_id), path(control_pileup_vcf)
+
+    script:
+        control_pileup_vcf = "${control_id}.pon_pileup.vcf.gz"
+        """
+        set -euo pipefail
+        bcftools mpileup -f ${reference_sequence_fasta} -T ${merged_sites_vcf} -a AD,DP -Ou ${control_bam} |
+            bcftools call -Aim -A -Oz -o ${control_pileup_vcf}
+        bcftools index -f ${control_pileup_vcf}
+        bcftools norm --multiallelics -both -f ${reference_sequence_fasta} -Oz -o ${control_pileup_vcf%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
+        mv ${control_pileup_vcf%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
+        bcftools index -f ${control_pileup_vcf}
+        """
+}
+
+// summarize control pileup VCFs into base-count table and join onto variants
+process add_pon_variant_pileup {
+
+    input:
+        path variants
+        val control_pileup_vcfs
+
+    output:
+        path variants_with_pon_variant
+
+    script:
+        variants_with_pon_variant = "variants_with_pon_variant.txt"
+        """
+        set -euo pipefail
+
+        # extract per-allele counts from control pileup VCFs
+        bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%SAMPLE\t%DP\t%AD]\n' ${control_pileup_vcfs.join(' ')} \
+            > pon_variant_pileup.raw.tsv
+
+        pon_variant_pileup.R \
+            --variants ${variants} \
+            --pileup pon_variant_pileup.raw.tsv \
+            --output pon_variant_pileup.tsv
+
+        add_pon_pileup.R \
+            --variants ${variants} \
+            --pon-pileup-counts pon_variant_pileup.tsv \
+            --output ${variants_with_pon_variant}
+        """
+}
+
 
 // -----------------------------------------------------------------------------
 // workflow
@@ -798,6 +884,32 @@ workflow {
         variants_for_summary = apply_background_noise_filters.out
     }
 
+    // optional: variant-targeted control pileup using merged sample VCF sites
+    if (params.controlBams && params.controlVariantPileup) {
+        // list of sample VCFs
+        sample_vcf_list = collate_variants.out.vcf.map { it[1] }.collect()
+
+        // merge all sample VCFs into a multi-sample, left-aligned VCF of sites
+        merge_sample_vcfs(sample_vcf_list.combine(reference_sequence_fasta))
+        merged_sites_vcf = merge_sample_vcfs.out
+
+        // run variant-targeted pileup for each control BAM
+        control_variant_bams = control_bams_input.map { tuple(it[0], it[2]) }
+        control_variant_pileup_input = control_variant_bams
+            .combine(merged_sites_vcf)
+            .combine(reference_sequence_fasta)
+            .map { cb, vcf, ref -> tuple(cb[0], cb[1], vcf, ref) }
+
+        pon_variant_pileup(control_variant_pileup_input)
+
+        // collect control pileup VCFs
+        control_pileup_vcf_list = pon_variant_pileup.out.map { it[1] }.collect()
+
+        // extract base-counts table and add to variants
+        add_pon_variant_pileup(apply_background_noise_filters.out, control_pileup_vcf_list)
+        variants_for_summary = add_pon_variant_pileup.out
+    }
+
     // create variant summary
     summarize_variants(
         variants_for_summary,
@@ -888,4 +1000,3 @@ def helpMessage() {
     """.stripIndent()
     log.info ""
 }
-

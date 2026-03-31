@@ -104,15 +104,25 @@ replicates <- variants %>%
   ungroup()
 
 variants <- variants %>%
+  # keep PON columns if present
+  rename_with(~"Total PON read depth", "PON Depth", .cols = any_of("PON Depth")) %>%
+  rename_with(~"Total PON variant read count", "PON Alt depth", .cols = any_of("PON Alt depth")) %>%
+  rename_with(~"Total PON variant proportion", "PON Alt fraction", .cols = any_of("PON Alt fraction")) %>%
   select(
     Sample, Amplicon, Chromosome, Position, Ref, Alt, Specific,
     ID, Filters, Quality, Depth, `Alt depth`, `Allele fraction`,
     `Depth (pileup)`, `Alt depth (pileup)`, `Allele fraction (pileup)`,
-    `Position noise threshold`, `Library noise threshold`
+    `Position noise threshold`, `Library noise threshold`,
+    any_of(c("Total PON read depth", "Total PON variant read count", "Total PON variant proportion"))
   ) %>%
   left_join(confidence, by = c("Sample", "Amplicon", "Chromosome", "Position", "Ref", "Alt")) %>%
   left_join(replicates, by = c("Sample", "ID")) %>%
-  pivot_wider(names_from = ReplicateNumber, values_from = !c(Sample:Specific, `Position noise threshold`, Confidence, ReplicateNumber), names_sep = " ") %>%
+  pivot_wider(
+    names_from = ReplicateNumber,
+    values_from = !c(Sample:Specific, `Position noise threshold`, Confidence, ReplicateNumber,
+                     `Total PON read depth`, `Total PON variant read count`, `Total PON variant proportion`),
+    names_sep = " "
+  ) %>%
   select(
     Sample, Amplicon, Chromosome, Position, Ref, Alt, Specific, Confidence,
     starts_with("ID "), starts_with("Filters "), starts_with("Quality "),
@@ -120,7 +130,8 @@ variants <- variants %>%
     matches("^Allele fraction [0-9]+$"),
     starts_with("Depth (pileup) "), starts_with("Alt depth (pileup) "),
     starts_with("Allele fraction (pileup) "),
-    `Position noise threshold`, starts_with("Library noise threshold ")
+    `Position noise threshold`, starts_with("Library noise threshold "),
+    any_of(c("Total PON read depth", "Total PON variant read count", "Total PON variant proportion"))
   )
 
 # read blacklist and add column to indicate which variants are blacklisted
@@ -154,4 +165,3 @@ variants <- variants %>%
 # write variant summary table to CSV and TSV files
 write_csv(variants, str_c(output_prefix, ".csv"), na = "")
 write_tsv(variants, str_c(output_prefix, ".txt"), na = "")
-

@@ -34,6 +34,14 @@ variants <- read_tsv(variants_file, col_types = cols(.default = "c"))
 
 pon_pileup_counts <- read_tsv(pon_pileup_counts_file, col_types = cols(.default = "c"))
 
+# If Amplicon is missing (variant-targeted pileup), map it from variants
+if (!"Amplicon" %in% colnames(pon_pileup_counts)) {
+  variants_for_amplicon <- variants %>% distinct(Amplicon, Chromosome, Position, Ref, Alt)
+  pon_pileup_counts <- pon_pileup_counts %>%
+    left_join(variants_for_amplicon, by = c("Chromosome", "Position", "Ref", "Alt")) %>%
+    relocate(Amplicon, .before = Chromosome)
+}
+
 # pivot base counts to long format, sum across all control samples per position
 pon_summary <- pon_pileup_counts %>%
   semi_join(variants, by = c("Amplicon", "Chromosome", "Position")) %>%
