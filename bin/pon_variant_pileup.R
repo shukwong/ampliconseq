@@ -47,7 +47,7 @@ pileup <- read_tsv(pileup_file, col_names = col_names, col_types = cols(.default
 split_counts <- function(ad_string, depth_string) {
   ads <- str_split(ad_string, ",", simplify = TRUE)
   depth <- suppressWarnings(as.integer(depth_string))
-  alt_count <- suppressWarnings(as.integer(ads[2]))
+  alt_count <- if (length(ads) >= 2) suppressWarnings(as.integer(ads[2])) else 0L
   list(depth = depth, alt_count = alt_count)
 }
 

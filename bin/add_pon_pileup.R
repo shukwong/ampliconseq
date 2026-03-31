@@ -39,6 +39,7 @@ if (!"Amplicon" %in% colnames(pon_pileup_counts)) {
   variants_for_amplicon <- variants %>% distinct(Amplicon, Chromosome, Position, Ref, Alt)
   pon_pileup_counts <- pon_pileup_counts %>%
     left_join(variants_for_amplicon, by = c("Chromosome", "Position", "Ref", "Alt")) %>%
+    distinct(ID, Amplicon, Chromosome, Position, Ref, Alt, .keep_all = TRUE) %>%
     relocate(Amplicon, .before = Chromosome)
 }
 
