@@ -674,13 +674,13 @@ process pon_variant_pileup {
         control_pileup_vcf = "${control_id}.pon_pileup.vcf.gz"
         """
         set -euo pipefail
-        bcftools mpileup -f ${reference_sequence_fasta} -T ${merged_sites_vcf} -a AD,DP -Ou ${control_bam} |
-            bcftools call -Aim -A -Oz -o ${control_pileup_vcf}
-        bcftools index -f ${control_pileup_vcf}
-
-        pileup=${control_pileup_vcf}
-        bcftools norm --multiallelics -both -f ${reference_sequence_fasta} -Oz -o \${pileup%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
-        mv \${pileup%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
+        bcftools mpileup \
+            -f ${reference_sequence_fasta} \
+            -T ${merged_sites_vcf} \
+            -a AD,DP \
+            --no-BAQ \
+            -Oz -o ${control_pileup_vcf} \
+            ${control_bam}
         bcftools index -f ${control_pileup_vcf}
         """
 }
