@@ -630,20 +630,21 @@ process merge_sample_vcfs {
 
     script:
         merged_sites_vcf = "merged_samples.vcf.gz"
+        sample_vcf_args = sample_vcfs.collect { it.toString() }.join(' ')
         """
         set -euo pipefail
 
         ref=${reference_sequence_fasta}
 
         tmp_dir=\$(mktemp -d)
-        for vcf in ${sample_vcfs}; do
+        for vcf in ${sample_vcf_args}; do
             base=\$(basename \${vcf%.*})
             norm_vcf=\${tmp_dir}/\${base}.norm.vcf.gz
             bcftools norm -f ${ref} -Oz -o \${norm_vcf} \${vcf}
             bcftools index -f \${norm_vcf}
         done
 
-        bcftools merge \${tmp_dir}/*.norm.vcf.gz -Oz -o ${merged_sites_vcf}
+        bcftools merge --force-single \${tmp_dir}/*.norm.vcf.gz -Oz -o ${merged_sites_vcf}
         bcftools index -f ${merged_sites_vcf}
         bcftools view -G -Oz -o ${merged_sites_vcf}.sites.vcf.gz ${merged_sites_vcf}
         mv ${merged_sites_vcf}.sites.vcf.gz ${merged_sites_vcf}
@@ -680,18 +681,19 @@ process add_pon_variant_pileup {
 
     input:
         path variants
-        val control_pileup_vcfs
+        path control_pileup_vcfs
 
     output:
         path variants_with_pon_variant
 
     script:
         variants_with_pon_variant = "variants_with_pon_variant.txt"
+        control_pileup_vcf_args = control_pileup_vcfs.collect { it.toString() }.join(' ')
         """
         set -euo pipefail
 
         # extract per-allele counts from control pileup VCFs
-        bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%SAMPLE\t%DP\t%AD]\n' ${control_pileup_vcfs.join(' ')} \
+        bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%SAMPLE\t%DP\t%AD]\n' ${control_pileup_vcf_args} \
             > pon_variant_pileup.raw.tsv
 
         pon_variant_pileup.R \
@@ -892,17 +894,16 @@ workflow {
         sample_vcf_list = collate_variants.out.vcf.map { it[1] }.collect()
 
         // merge all sample VCFs into a multi-sample, left-aligned VCF of sites
-        merge_sample_vcfs(sample_vcf_list.combine(reference_sequence_fasta))
+        merge_sample_vcfs(sample_vcf_list, reference_sequence_fasta)
         merged_sites_vcf = merge_sample_vcfs.out
 
         // run variant-targeted pileup for each control BAM
         control_variant_bams = control_bams_input.map { tuple(it[0], it[2]) }
-        control_variant_pileup_input = control_variant_bams
-            .combine(merged_sites_vcf)
-            .combine(reference_sequence_fasta)
-            .map { cb, vcf, ref -> tuple(cb[0], cb[1], vcf, ref) }
-
-        pon_variant_pileup(control_variant_pileup_input)
+        pon_variant_pileup(
+            control_variant_bams
+                .combine(merged_sites_vcf)
+                .combine(reference_sequence_fasta)
+        )
 
         // collect control pileup VCFs
         control_pileup_vcf_list = pon_variant_pileup.out.map { it[1] }.collect()
@@ -949,6 +950,7 @@ def printParameterSummary() {
         Variant caller             : ${params.variantCaller}
         Minimum allele fraction    : ${params.minimumAlleleFraction}
         Control BAMs (PoN)         : ${params.controlBams ?: 'not specified'}
+        Control variant pileup     : ${params.controlVariantPileup}
     """.stripIndent()
     log.info ""
 }
@@ -979,6 +981,7 @@ def helpMessage() {
             --variantCaller            The variant caller (VarDict, HaplotypeCaller or Mutect2)
             --minimumAlleleFraction    Lower allele fraction limit for detection of variants (for variant callers that provide this option only)
             --controlBams              TSV file listing control BAMs for Panel of Normals pileup (Sample and BAM columns required)
+            --controlVariantPileup     Run variant-targeted PoN pileup using merged sample VCF sites
 
         Alternatively, override settings using a configuration file such as the
         following:

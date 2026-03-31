@@ -11,7 +11,7 @@ option_list <- list(
               help = "TSV file containing variants (Amplicon, Chromosome, Position, Ref and Alt columns required)"),
 
   make_option(c("--pon-pileup-counts"), dest = "pon_pileup_counts_file",
-              help = "TSV file containing pileup counts from control BAMs (ID, Amplicon, Chromosome, Position, 'Reference base', Depth, 'A count', 'C count', 'G count' and 'T count' columns required)"),
+              help = "TSV file containing pileup counts from control BAMs. Supports either per-base columns ('Reference base', 'A count'...'T count') or direct allele columns (Ref, Alt, 'Alt count')."),
 
   make_option(c("--output"), dest = "output_file",
               help = "Output variants file with PON columns added")
@@ -42,20 +42,35 @@ if (!"Amplicon" %in% colnames(pon_pileup_counts)) {
     relocate(Amplicon, .before = Chromosome)
 }
 
-# pivot base counts to long format, sum across all control samples per position
-pon_summary <- pon_pileup_counts %>%
-  semi_join(variants, by = c("Amplicon", "Chromosome", "Position")) %>%
-  select(ID, Amplicon, Chromosome, Position, Ref = `Reference base`, `A count`:`T count`, Depth) %>%
-  pivot_longer(`A count`:`T count`, names_to = "Alt", values_to = "Count") %>%
-  mutate(Alt = str_remove(Alt, " count$")) %>%
-  mutate(across(c(Count, Depth), parse_integer)) %>%
-  group_by(Amplicon, Chromosome, Position, Ref, Alt) %>%
-  summarize(
-    `PON Depth` = sum(Depth, na.rm = TRUE),
-    `PON Alt depth` = sum(Count, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(`PON Alt fraction` = `PON Alt depth` / `PON Depth`)
+if (all(c("Ref", "Alt", "Alt count") %in% colnames(pon_pileup_counts))) {
+  # Variant-targeted pileup already carries the queried allele, so this path
+  # works for both SNVs and indels.
+  pon_summary <- pon_pileup_counts %>%
+    semi_join(variants, by = c("Amplicon", "Chromosome", "Position", "Ref", "Alt")) %>%
+    mutate(across(c(Depth, `Alt count`), parse_integer)) %>%
+    group_by(Amplicon, Chromosome, Position, Ref, Alt) %>%
+    summarize(
+      `PON Depth` = sum(Depth, na.rm = TRUE),
+      `PON Alt depth` = sum(`Alt count`, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(`PON Alt fraction` = `PON Alt depth` / `PON Depth`)
+} else {
+  # Legacy amplicon-wide pileup path only has nucleotide counts.
+  pon_summary <- pon_pileup_counts %>%
+    semi_join(variants, by = c("Amplicon", "Chromosome", "Position")) %>%
+    select(ID, Amplicon, Chromosome, Position, Ref = `Reference base`, `A count`:`T count`, Depth) %>%
+    pivot_longer(`A count`:`T count`, names_to = "Alt", values_to = "Count") %>%
+    mutate(Alt = str_remove(Alt, " count$")) %>%
+    mutate(across(c(Count, Depth), parse_integer)) %>%
+    group_by(Amplicon, Chromosome, Position, Ref, Alt) %>%
+    summarize(
+      `PON Depth` = sum(Depth, na.rm = TRUE),
+      `PON Alt depth` = sum(Count, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(`PON Alt fraction` = `PON Alt depth` / `PON Depth`)
+}
 
 variants %>%
   left_join(pon_summary, by = c("Amplicon", "Chromosome", "Position", "Ref", "Alt")) %>%

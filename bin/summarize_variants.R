@@ -105,9 +105,9 @@ replicates <- variants %>%
 
 variants <- variants %>%
   # keep PON columns if present
-  rename_with(~"Total PON read depth", "PON Depth", .cols = any_of("PON Depth")) %>%
-  rename_with(~"Total PON variant read count", "PON Alt depth", .cols = any_of("PON Alt depth")) %>%
-  rename_with(~"Total PON variant proportion", "PON Alt fraction", .cols = any_of("PON Alt fraction")) %>%
+  rename_with(~ "Total PON read depth", .cols = any_of("PON Depth")) %>%
+  rename_with(~ "Total PON variant read count", .cols = any_of("PON Alt depth")) %>%
+  rename_with(~ "Total PON variant proportion", .cols = any_of("PON Alt fraction")) %>%
   select(
     Sample, Amplicon, Chromosome, Position, Ref, Alt, Specific,
     ID, Filters, Quality, Depth, `Alt depth`, `Allele fraction`,

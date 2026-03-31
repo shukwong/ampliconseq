@@ -13,7 +13,7 @@ option_list <- list(
   make_option(c("--pileup"), dest = "pileup_file",
               help = "Raw pileup TSV from bcftools query with columns: CHROM POS REF ALT SAMPLE DP AD"),
   make_option(c("--output"), dest = "output_file",
-              help = "Output TSV with columns: ID, Amplicon, Chromosome, Position, Reference base, Depth, A count, C count, G count, T count")
+              help = "Output TSV with columns: ID, Amplicon, Chromosome, Position, Ref, Alt, Depth, Alt count")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list, add_help_option = TRUE))
@@ -42,26 +42,20 @@ variants_subset <- variants %>%
 col_names <- c("Chromosome", "Position", "Ref", "Alt", "ID", "Depth", "AD")
 pileup <- read_tsv(pileup_file, col_names = col_names, col_types = cols(.default = "c"))
 
-# split AD (ref,alt,alt2...) and compute counts per nucleotide
-split_counts <- function(ref_base, alt_base, ad_string, depth_string) {
+# split AD (ref,alt,alt2...) and keep only the current ALT count; the VCFs
+# were normalized before querying so each row should be biallelic.
+split_counts <- function(ad_string, depth_string) {
   ads <- str_split(ad_string, ",", simplify = TRUE)
   depth <- suppressWarnings(as.integer(depth_string))
-  ref_count <- suppressWarnings(as.integer(ads[1]))
   alt_count <- suppressWarnings(as.integer(ads[2]))
-  counts <- c(A = 0L, C = 0L, G = 0L, T = 0L)
-  if (!is.na(ref_count) && ref_base %in% names(counts)) counts[ref_base] <- counts[ref_base] + ref_count
-  if (!is.na(alt_count) && alt_base %in% names(counts)) counts[alt_base] <- counts[alt_base] + alt_count
-  list(depth = depth, counts = counts)
+  list(depth = depth, alt_count = alt_count)
 }
 
 pileup_parsed <- pileup %>%
   rowwise() %>%
-  mutate(parsed = list(split_counts(Ref, Alt, AD, Depth))) %>%
+  mutate(parsed = list(split_counts(AD, Depth))) %>%
   mutate(Depth = parsed$depth,
-         `A count` = parsed$counts["A"],
-         `C count` = parsed$counts["C"],
-         `G count` = parsed$counts["G"],
-         `T count` = parsed$counts["T"],
+         `Alt count` = parsed$alt_count,
          .keep = "unused") %>%
   ungroup() %>%
   select(-parsed)
@@ -69,7 +63,6 @@ pileup_parsed <- pileup %>%
 # add Amplicon from variants table
 pileup_with_amplicon <- pileup_parsed %>%
   left_join(variants_subset, by = c("Chromosome", "Position", "Ref", "Alt")) %>%
-  rename(`Reference base` = Ref)
+  select(ID, Amplicon, Chromosome, Position, Ref, Alt, Depth, `Alt count`)
 
 write_tsv(pileup_with_amplicon, output_file, na = "")
-
