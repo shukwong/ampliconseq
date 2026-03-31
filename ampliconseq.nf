@@ -635,15 +635,15 @@ process merge_sample_vcfs {
 
         ref=${reference_sequence_fasta}
 
-        tmp_dir=$(mktemp -d)
+        tmp_dir=\$(mktemp -d)
         for vcf in ${sample_vcfs}; do
-            base=$(basename ${vcf%.*})
-            norm_vcf=${tmp_dir}/${base}.norm.vcf.gz
-            bcftools norm -f ${ref} -Oz -o ${norm_vcf} ${vcf}
-            bcftools index -f ${norm_vcf}
+            base=\$(basename \${vcf%.*})
+            norm_vcf=\${tmp_dir}/\${base}.norm.vcf.gz
+            bcftools norm -f ${ref} -Oz -o \${norm_vcf} \${vcf}
+            bcftools index -f \${norm_vcf}
         done
 
-        bcftools merge ${tmp_dir}/*.norm.vcf.gz -Oz -o ${merged_sites_vcf}
+        bcftools merge \${tmp_dir}/*.norm.vcf.gz -Oz -o ${merged_sites_vcf}
         bcftools index -f ${merged_sites_vcf}
         bcftools view -G -Oz -o ${merged_sites_vcf}.sites.vcf.gz ${merged_sites_vcf}
         mv ${merged_sites_vcf}.sites.vcf.gz ${merged_sites_vcf}
@@ -667,8 +667,10 @@ process pon_variant_pileup {
         bcftools mpileup -f ${reference_sequence_fasta} -T ${merged_sites_vcf} -a AD,DP -Ou ${control_bam} |
             bcftools call -Aim -A -Oz -o ${control_pileup_vcf}
         bcftools index -f ${control_pileup_vcf}
-        bcftools norm --multiallelics -both -f ${reference_sequence_fasta} -Oz -o ${control_pileup_vcf%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
-        mv ${control_pileup_vcf%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
+
+        pileup=${control_pileup_vcf}
+        bcftools norm --multiallelics -both -f ${reference_sequence_fasta} -Oz -o \${pileup%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
+        mv \${pileup%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
         bcftools index -f ${control_pileup_vcf}
         """
 }
