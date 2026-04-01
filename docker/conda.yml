@@ -18,3 +18,4 @@ dependencies:
   - bioconda::vardict-java=1.8.3
   - bioconda::ensembl-vep=115.2
   - bioconda::bcftools=1.21
+  - bioconda::samtools=1.21
