@@ -639,13 +639,11 @@ process merge_sample_vcfs {
         """
         set -euo pipefail
 
-        ref=${reference_sequence_fasta}
-
         tmp_dir=\$(mktemp -d)
         for vcf in ${sample_vcf_args}; do
             base=\$(basename \${vcf%.*})
             norm_vcf=\${tmp_dir}/\${base}.norm.vcf.gz
-            bcftools norm -f ${ref} -Oz -o \${norm_vcf} \${vcf}
+            bcftools norm -f ${reference_sequence_fasta} -Oz -o \${norm_vcf} \${vcf}
             bcftools index -f \${norm_vcf}
         done
 
