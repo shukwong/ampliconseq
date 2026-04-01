@@ -655,6 +655,58 @@ process merge_sample_vcfs {
         """
 }
 
+// subset control BAMs to variant regions and optionally cap coverage
+process subset_control_bams {
+
+    memory { 8.GB * task.attempt }
+    time { 4.hour * task.attempt }
+    maxRetries 1
+
+    input:
+        tuple val(control_id), path(control_bam), path(merged_sites_vcf), path(merged_sites_vcf_index), path(reference_sequence_fasta)
+        val max_coverage
+
+    output:
+        tuple val(control_id), path(subset_bam)
+
+    script:
+        subset_bam = "${control_id}.subset.bam"
+        """
+        set -euo pipefail
+
+        # convert sites VCF to BED with padding, merge overlapping intervals
+        bcftools query -f '%CHROM\t%POS0\t%END\n' ${merged_sites_vcf} | \
+            awk -v OFS='\t' '{print \$1, (\$2 > 500 ? \$2 - 500 : 0), \$3 + 500}' | \
+            sort -k1,1 -k2,2n | \
+            awk -v OFS='\t' 'NR==1 {chr=\$1; s=\$2; e=\$3; next}
+                \$1==chr && \$2<=e {if(\$3>e) e=\$3; next}
+                {print chr, s, e; chr=\$1; s=\$2; e=\$3}
+                END {if(NR) print chr, s, e}' > regions.bed
+
+        # extract reads overlapping variant regions
+        samtools view -b -L regions.bed -q 5 ${control_bam} > regional.bam
+        samtools index regional.bam
+
+        # downsample to coverage cap if specified
+        if [ ${max_coverage} -gt 0 ]; then
+            samtools depth -b regions.bed regional.bam | \
+                awk '{sum+=\$3; n++} END {print (n>0 ? sum/n : 0)}' > mean_depth.txt
+            mean_depth=\$(cat mean_depth.txt)
+            frac=\$(awk -v d="\${mean_depth}" -v cap="${max_coverage}" \
+                'BEGIN { if (d > cap) printf "%.4f", cap/d; else print 1 }')
+            if [ "\${frac}" != "1" ]; then
+                samtools view -b -s \${frac} regional.bam > ${subset_bam}
+            else
+                mv regional.bam ${subset_bam}
+            fi
+        else
+            mv regional.bam ${subset_bam}
+        fi
+
+        samtools index ${subset_bam}
+        """
+}
+
 // variant-targeted pileup for control BAMs using merged sample sites VCF
 process pon_variant_pileup {
 
@@ -906,10 +958,20 @@ workflow {
         merged_sites_vcf = merge_sample_vcfs.out[0]
         merged_sites_vcf_index = merge_sample_vcfs.out[1]
 
-        // run variant-targeted pileup for each control BAM
+        // subset control BAMs to variant regions and optionally cap coverage
         control_variant_bams = control_bams_input.map { tuple(it[0], it[2]) }
-        pon_variant_pileup(
+        max_coverage = Channel.value(params.controlMaxCoverage)
+        subset_control_bams(
             control_variant_bams
+                .combine(merged_sites_vcf)
+                .combine(merged_sites_vcf_index)
+                .combine(reference_sequence_fasta),
+            max_coverage
+        )
+
+        // run variant-targeted pileup on subsetted control BAMs
+        pon_variant_pileup(
+            subset_control_bams.out
                 .combine(merged_sites_vcf)
                 .combine(merged_sites_vcf_index)
                 .combine(reference_sequence_fasta)
@@ -961,6 +1023,7 @@ def printParameterSummary() {
         Minimum allele fraction    : ${params.minimumAlleleFraction}
         Control BAMs (PoN)         : ${params.controlBams ?: 'not specified'}
         Control variant pileup     : ${params.controlVariantPileup}
+        Control max coverage       : ${params.controlMaxCoverage}
     """.stripIndent()
     log.info ""
 }
@@ -992,6 +1055,7 @@ def helpMessage() {
             --minimumAlleleFraction    Lower allele fraction limit for detection of variants (for variant callers that provide this option only)
             --controlBams              TSV file listing control BAMs for Panel of Normals pileup (Sample and BAM columns required)
             --controlVariantPileup     Run variant-targeted PoN pileup using merged sample VCF sites
+            --controlMaxCoverage      Maximum per-position coverage for control BAMs before downsampling (default: 50000, 0 = no cap)
 
         Alternatively, override settings using a configuration file such as the
         following:
