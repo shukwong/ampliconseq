@@ -679,6 +679,7 @@ process pon_variant_pileup {
             -T ${merged_sites_vcf} \
             -a AD,DP \
             --no-BAQ \
+            -q 5 -Q 5 \
             -Oz -o ${control_pileup_vcf} \
             ${control_bam}
         bcftools index -f ${control_pileup_vcf}
