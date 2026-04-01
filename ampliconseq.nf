@@ -621,12 +621,17 @@ process add_pon_pileup {
 // merge sample VCFs and create a multi-sample, left-aligned sites VCF
 process merge_sample_vcfs {
 
+    memory { 4.GB * task.attempt }
+    time { 2.hour * task.attempt }
+    maxRetries 1
+
     input:
         val sample_vcfs
         path reference_sequence_fasta
 
     output:
         path merged_sites_vcf
+        path "${merged_sites_vcf}.csi"
 
     script:
         merged_sites_vcf = "merged_samples.vcf.gz"
@@ -655,8 +660,12 @@ process merge_sample_vcfs {
 // variant-targeted pileup for control BAMs using merged sample sites VCF
 process pon_variant_pileup {
 
+    memory { 8.GB * task.attempt }
+    time { 4.hour * task.attempt }
+    maxRetries 1
+
     input:
-        tuple val(control_id), path(control_bam), path(merged_sites_vcf), path(reference_sequence_fasta)
+        tuple val(control_id), path(control_bam), path(merged_sites_vcf), path(merged_sites_vcf_index), path(reference_sequence_fasta)
 
     output:
         tuple val(control_id), path(control_pileup_vcf)
@@ -665,13 +674,14 @@ process pon_variant_pileup {
         control_pileup_vcf = "${control_id}.pon_pileup.vcf.gz"
         """
         set -euo pipefail
-        bcftools mpileup -f ${reference_sequence_fasta} -T ${merged_sites_vcf} -a AD,DP -Ou ${control_bam} |
-            bcftools call -Aim -A -Oz -o ${control_pileup_vcf}
-        bcftools index -f ${control_pileup_vcf}
-
-        pileup=${control_pileup_vcf}
-        bcftools norm --multiallelics -both -f ${reference_sequence_fasta} -Oz -o \${pileup%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
-        mv \${pileup%.vcf.gz}.norm.vcf.gz ${control_pileup_vcf}
+        bcftools mpileup \
+            -f ${reference_sequence_fasta} \
+            -T ${merged_sites_vcf} \
+            -a AD,DP \
+            --no-BAQ \
+            -q 5 -Q 5 \
+            -Oz -o ${control_pileup_vcf} \
+            ${control_bam}
         bcftools index -f ${control_pileup_vcf}
         """
 }
@@ -895,13 +905,15 @@ workflow {
 
         // merge all sample VCFs into a multi-sample, left-aligned VCF of sites
         merge_sample_vcfs(sample_vcf_list, reference_sequence_fasta)
-        merged_sites_vcf = merge_sample_vcfs.out
+        merged_sites_vcf = merge_sample_vcfs.out[0]
+        merged_sites_vcf_index = merge_sample_vcfs.out[1]
 
         // run variant-targeted pileup for each control BAM
         control_variant_bams = control_bams_input.map { tuple(it[0], it[2]) }
         pon_variant_pileup(
             control_variant_bams
                 .combine(merged_sites_vcf)
+                .combine(merged_sites_vcf_index)
                 .combine(reference_sequence_fasta)
         )
 
@@ -909,7 +921,7 @@ workflow {
         control_pileup_vcf_list = pon_variant_pileup.out.map { it[1] }.collect()
 
         // extract base-counts table and add to variants
-        add_pon_variant_pileup(apply_background_noise_filters.out, control_pileup_vcf_list)
+        add_pon_variant_pileup(variants_for_summary, control_pileup_vcf_list)
         variants_for_summary = add_pon_variant_pileup.out
     }
 
