@@ -557,9 +557,9 @@ process summarize_variants {
 process pon_extract_amplicon_regions {
     tag "${id}"
 
-    errorStrategy { task.exitStatus in [null,1,143,137,104,134,139] ? 'retry' : 'finish' }
+    errorStrategy { task.exitStatus in [null,1,140,143,137,104,134,139] ? 'retry' : 'finish' }
     memory { 16.GB * task.attempt }
-    time { 4.hour * task.attempt }
+    time { 6.hour * task.attempt }
     maxRetries 2
 
     input:
