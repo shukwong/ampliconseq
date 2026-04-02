@@ -718,7 +718,7 @@ process pon_variant_pileup {
         tuple val(control_id), path(control_bam), path(merged_sites_vcf), path(merged_sites_vcf_index), path(reference_sequence_fasta)
 
     output:
-        tuple val(control_id), path(control_pileup_vcf)
+        tuple val(control_id), path(control_pileup_vcf), path("${control_pileup_vcf}.csi")
 
     script:
         control_pileup_vcf = "${control_id}.pon_pileup.vcf.gz"
@@ -742,6 +742,7 @@ process add_pon_variant_pileup {
     input:
         path variants
         path control_pileup_vcfs
+        path control_pileup_vcf_indexes
 
     output:
         path variants_with_pon_variant
@@ -977,11 +978,12 @@ workflow {
                 .combine(reference_sequence_fasta)
         )
 
-        // collect control pileup VCFs
+        // collect control pileup VCFs and their indexes
         control_pileup_vcf_list = pon_variant_pileup.out.map { it[1] }.collect()
+        control_pileup_vcf_index_list = pon_variant_pileup.out.map { it[2] }.collect()
 
         // extract base-counts table and add to variants
-        add_pon_variant_pileup(variants_for_summary, control_pileup_vcf_list)
+        add_pon_variant_pileup(variants_for_summary, control_pileup_vcf_list, control_pileup_vcf_index_list)
         variants_for_summary = add_pon_variant_pileup.out
     }
 
