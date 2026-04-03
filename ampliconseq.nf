@@ -870,17 +870,20 @@ workflow {
                 tuple("${row.Sample}", "${row.Sample}".replaceFirst(/ /, "_"), bam)
             }
 
-        // extract amplicon regions from control BAMs
-        pon_extract_amplicon_regions(bed_files.combine(control_bams_input))
+        // amplicon-based pileup path (skipped when controlVariantPileup is enabled)
+        if (!params.controlVariantPileup) {
+            // extract amplicon regions from control BAMs
+            pon_extract_amplicon_regions(bed_files.combine(control_bams_input))
 
-        // generate pileup counts for control BAMs
-        control_amplicon_bams = pon_extract_amplicon_regions.out.bam.combine(reference_sequence)
-        pon_pileup_counts(control_amplicon_bams)
+            // generate pileup counts for control BAMs
+            control_amplicon_bams = pon_extract_amplicon_regions.out.bam.combine(reference_sequence)
+            pon_pileup_counts(control_amplicon_bams)
 
-        // collect control pileup counts across all control BAMs and amplicon groups
-        collected_control_pileup_counts = pon_pileup_counts.out
-            .collectFile(keepHeader: true) { item -> [ "${item[1]}.pileup_counts.txt", item[2] ] }
-            .collectFile(name: "pon_pileup_counts.txt", keepHeader: true, sort: { it.name }, storeDir: "${params.outputDir}/pon")
+            // collect control pileup counts across all control BAMs and amplicon groups
+            collected_control_pileup_counts = pon_pileup_counts.out
+                .collectFile(keepHeader: true) { item -> [ "${item[1]}.pileup_counts.txt", item[2] ] }
+                .collectFile(name: "pon_pileup_counts.txt", keepHeader: true, sort: { it.name }, storeDir: "${params.outputDir}/pon")
+        }
     }
 
     // collate alignment and target coverage metrics
@@ -941,8 +944,8 @@ workflow {
         compute_background_noise_thresholds.out.library_noise_thresholds
     )
 
-    // add PON pileup columns if control BAMs were provided
-    if (params.controlBams) {
+    // add PON pileup columns if amplicon-based path was used
+    if (params.controlBams && !params.controlVariantPileup) {
         add_pon_pileup(apply_background_noise_filters.out, collected_control_pileup_counts)
         variants_for_summary = add_pon_pileup.out
     } else {
