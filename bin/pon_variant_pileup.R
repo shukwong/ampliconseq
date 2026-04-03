@@ -75,6 +75,7 @@ pileup_alleles <- pileup %>%
   rowwise() %>%
   mutate(expanded = list(expand_alleles(Alt, AD))) %>%
   ungroup() %>%
+  select(-Alt, -AD) %>%
   unnest(expanded) %>%
   select(ID, Chromosome, Position, Alt, `Alt count`)
 
