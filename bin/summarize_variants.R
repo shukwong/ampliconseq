@@ -110,7 +110,7 @@ variants <- variants %>%
   rename_with(~ "Total PON variant proportion", .cols = any_of("PON Alt fraction")) %>%
   select(
     Sample, Amplicon, Chromosome, Position, Ref, Alt, Specific,
-    ID, Filters, Quality, Depth, `Alt depth`, `Allele fraction`,
+    ID, Filters, Quality, Depth, `Ref depth`, `Alt depth`, `Allele fraction`,
     `Depth (pileup)`, `Alt depth (pileup)`, `Allele fraction (pileup)`,
     `Position noise threshold`, `Library noise threshold`,
     any_of(c("Total PON read depth", "Total PON variant read count", "Total PON variant proportion"))
@@ -126,7 +126,7 @@ variants <- variants %>%
   select(
     Sample, Amplicon, Chromosome, Position, Ref, Alt, Specific, Confidence,
     starts_with("ID "), starts_with("Filters "), starts_with("Quality "),
-    matches("^Depth [0-9]+$"), matches("^Alt depth [0-9]+$"),
+    matches("^Depth [0-9]+$"), matches("^Ref depth [0-9]+$"), matches("^Alt depth [0-9]+$"),
     matches("^Allele fraction [0-9]+$"),
     starts_with("Depth (pileup) "), starts_with("Alt depth (pileup) "),
     starts_with("Allele fraction (pileup) "),
