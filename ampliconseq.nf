@@ -729,9 +729,13 @@ process pon_variant_pileup {
             -T ${merged_sites_vcf} \
             -a AD,DP \
             --no-BAQ \
+            --indels-cns \
             -q 5 -Q 5 \
-            -Oz -o ${control_pileup_vcf} \
-            ${control_bam}
+            -Ou ${control_bam} \
+            | bcftools norm \
+                -f ${reference_sequence_fasta} \
+                --multiallelics -both \
+                -Oz -o ${control_pileup_vcf}
         bcftools index -f ${control_pileup_vcf}
         """
 }
