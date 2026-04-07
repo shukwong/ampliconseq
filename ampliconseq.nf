@@ -759,9 +759,13 @@ process add_pon_variant_pileup {
         """
         set -euo pipefail
 
-        # extract per-allele counts from control pileup VCFs
-        bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%SAMPLE\t%DP\t%AD]\n' ${control_pileup_vcf_args} \
-            > pon_variant_pileup.raw.tsv
+        # extract per-allele counts from each control pileup VCF.
+        # bcftools query only processes the first input file, so we loop.
+        : > pon_variant_pileup.raw.tsv
+        for vcf in ${control_pileup_vcf_args}; do
+            bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%SAMPLE\t%DP\t%AD]\n' \${vcf} \
+                >> pon_variant_pileup.raw.tsv
+        done
 
         pon_variant_pileup.R \
             --variants ${variants} \
