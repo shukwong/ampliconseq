@@ -731,6 +731,7 @@ process pon_variant_pileup {
             --no-BAQ \
             --indels-cns \
             --max-depth 1000000 \
+            --ignore-RG \
             -q 5 -Q 5 \
             -Ou ${control_bam} \
             | bcftools norm \
