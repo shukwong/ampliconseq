@@ -44,8 +44,48 @@ suppressPackageStartupMessages(library(tidyverse))
 # read variants file
 variants <- read_tsv(input_file, col_types = cols(.default = "c"))
 
-# rename columns
-colnames(variants) <- c("Amplicon", "Chromosome", "Position", "Ref", "Alt", "Multiallelic", "Filters", "Quality", "FivePrimeContext", "Depth", "AD", "Allele fraction")
+# Rename fixed columns from VariantsToTable output. The genotype columns
+# (DP, AD, AF) are prefixed with the sample name and there may be more than
+# one set if the BAM contains multiple SM tags in its read groups.
+fixed_cols <- c("Amplicon", "Chromosome", "Position", "Ref", "Alt",
+                "Multiallelic", "Filters", "Quality", "FivePrimeContext")
+colnames(variants)[1:length(fixed_cols)] <- fixed_cols
+
+# Identify per-sample DP / AD / AF columns by suffix (e.g. "SAMPLE1.DP").
+dp_cols <- grep("\\.DP$", colnames(variants), value = TRUE)
+ad_cols <- grep("\\.AD$", colnames(variants), value = TRUE)
+af_cols <- grep("\\.AF$", colnames(variants), value = TRUE)
+
+# Sum DP across samples. AD is "ref,alt" per sample; parse, sum ref and alt
+# separately, then reassemble as "ref_total,alt_total". AF is recomputed
+# from the summed values when there are multiple samples.
+parse_int <- function(x) suppressWarnings(as.integer(x))
+
+sum_ad <- function(...) {
+  vals <- list(...)
+  refs <- vapply(vals, function(v) parse_int(str_split_i(v, ",", 1)), integer(1))
+  alts <- vapply(vals, function(v) parse_int(str_split_i(v, ",", 2)), integer(1))
+  ref_sum <- if (all(is.na(refs))) NA_integer_ else sum(refs, na.rm = TRUE)
+  alt_sum <- if (all(is.na(alts))) NA_integer_ else sum(alts, na.rm = TRUE)
+  if (is.na(ref_sum) && is.na(alt_sum)) NA_character_
+  else paste(ifelse(is.na(ref_sum), "", ref_sum),
+             ifelse(is.na(alt_sum), "", alt_sum), sep = ",")
+}
+
+variants <- variants %>%
+  mutate(
+    Depth = if (length(dp_cols) == 0) NA_character_
+            else as.character(rowSums(across(all_of(dp_cols), parse_int), na.rm = TRUE)),
+    AD = if (length(ad_cols) == 0) NA_character_
+         else pmap_chr(across(all_of(ad_cols)), sum_ad),
+    `Allele fraction` = if (length(af_cols) == 1) {
+                          as.character(suppressWarnings(as.double(.data[[af_cols]])))
+                        } else {
+                          # with multiple samples, recompute from summed AD
+                          NA_character_
+                        }
+  ) %>%
+  select(-any_of(c(dp_cols, ad_cols, af_cols)))
 
 # convert Multiallelic column to boolean and change NAs to FALSE
 variants <- variants %>%

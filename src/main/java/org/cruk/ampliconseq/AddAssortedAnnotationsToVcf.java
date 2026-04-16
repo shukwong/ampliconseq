@@ -45,6 +45,7 @@ public class AddAssortedAnnotationsToVcf extends CommandLineProgram {
     private static final String THREE_PRIME_SEQUENCE_CONTEXT = "ThreePrimeContext";
     private static final String INDEL_LENGTH = "IndelLength";
     private static final String HOMOPOLYMER_LENGTH = "HomopolymerLength";
+    private static final String HOMOPOLYMER_AT_VARIANT = "HomopolymerAtVariant";
 
     @Option(names = { "-i", "--input" }, required = true, description = "Input VCF file (required).")
     private File inputVcfFile;
@@ -98,6 +99,7 @@ public class AddAssortedAnnotationsToVcf extends CommandLineProgram {
             addSequenceContext(variant, referenceSequence);
             addIndelLength(variant);
             addHomopolymerLength(variant, referenceSequence);
+            addHomopolymerAtVariant(variant, referenceSequence);
             writer.add(variant);
         }
 
@@ -124,6 +126,8 @@ public class AddAssortedAnnotationsToVcf extends CommandLineProgram {
                 new VCFInfoHeaderLine(INDEL_LENGTH, 1, VCFHeaderLineType.Integer, "The length of the indel."));
         header.addMetaDataLine(new VCFInfoHeaderLine(HOMOPOLYMER_LENGTH, 1, VCFHeaderLineType.Integer,
                 "Length of the longest homopolymer run overlapping or immediately adjacent to the variant position."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(HOMOPOLYMER_AT_VARIANT, 1, VCFHeaderLineType.Integer,
+                "Length of the homopolymer run containing or immediately flanking the variant position (0 if none)."));
     }
 
     /**
@@ -205,5 +209,63 @@ public class AddAssortedAnnotationsToVcf extends CommandLineProgram {
         }
 
         variant.getCommonInfo().putAttribute(HOMOPOLYMER_LENGTH, maxRun);
+    }
+
+    /**
+     * Adds an INFO entry for the length of the homopolymer run that contains
+     * or is immediately flanking the variant position. Unlike HomopolymerLength
+     * which reports any homopolymer in a wide window around the variant, this
+     * reports 0 when the variant is not in or next to a homopolymer run of
+     * length >= 2.
+     *
+     * For SNVs, the method walks outward from the variant position in both
+     * directions as long as bases match the base at the variant position.
+     * For indels, it considers runs at both flanks (position before the
+     * insertion/deletion and position after), using the longer of the two.
+     *
+     * @param variant           the variant
+     * @param referenceSequence the reference sequence
+     */
+    private void addHomopolymerAtVariant(VariantContext variant, ReferenceSequenceFile referenceSequence) {
+        String contig = variant.getContig();
+        int contigLength = referenceSequence.getSequenceDictionary().getSequence(contig).getSequenceLength();
+
+        // fetch a window around the variant; enough to span any plausible homopolymer
+        int windowSize = 50;
+        int windowStart = Math.max(1, variant.getStart() - windowSize);
+        int windowEnd = Math.min(variant.getEnd() + windowSize, contigLength);
+        String bases = referenceSequence.getSubsequenceAt(contig, windowStart, windowEnd)
+                .getBaseString().toUpperCase();
+
+        int maxRun = 0;
+
+        // positions to check: for a SNV the variant position itself; for indels
+        // the positions flanking the insertion/deletion
+        int[] positions;
+        if (variant.isSNP() || variant.isMNP()) {
+            positions = new int[] { variant.getStart() };
+        } else {
+            // indel: check bases flanking the event on both sides
+            positions = new int[] { variant.getStart(), variant.getEnd() + 1 };
+        }
+
+        for (int pos : positions) {
+            if (pos < 1 || pos > contigLength) continue;
+            int idx = pos - windowStart;
+            if (idx < 0 || idx >= bases.length()) continue;
+            char base = bases.charAt(idx);
+            if (base == 'N') continue;
+
+            int run = 1;
+            for (int i = idx - 1; i >= 0 && bases.charAt(i) == base; i--) run++;
+            for (int i = idx + 1; i < bases.length() && bases.charAt(i) == base; i++) run++;
+
+            if (run > maxRun) maxRun = run;
+        }
+
+        // only report if the variant sits in or directly next to a run of >= 2
+        if (maxRun < 2) maxRun = 0;
+
+        variant.getCommonInfo().putAttribute(HOMOPOLYMER_AT_VARIANT, maxRun);
     }
 }
