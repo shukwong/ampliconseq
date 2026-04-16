@@ -643,7 +643,11 @@ process merge_sample_vcfs {
         for vcf in ${sample_vcf_args}; do
             base=\$(basename \${vcf%.*})
             norm_vcf=\${tmp_dir}/\${base}.norm.vcf.gz
-            bcftools norm -f ${reference_sequence_fasta} -Oz -o \${norm_vcf} \${vcf}
+            # Strip all INFO fields (some callers, e.g. Mutect2 AS_FilterStatus,
+            # have per-allele annotations that break bcftools merge after norm).
+            # We only need sites for PoN pileup.
+            bcftools annotate -x INFO,^FORMAT/GT \${vcf} -Ou \
+                | bcftools norm -f ${reference_sequence_fasta} -Oz -o \${norm_vcf}
             bcftools index -f \${norm_vcf}
         done
 
